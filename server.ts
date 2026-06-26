@@ -22,6 +22,62 @@ if (apiKey) {
   console.warn("Warning: GEMINI_API_KEY environment variable is not defined.");
 }
 
+// Manus API Configuration and helper function
+const MANUS_API_KEY = process.env.MANUS_API_KEY || "sk-qdQ2TpE3xIbzOdeuVmyiVsr-ibweSFuxTc0GEVIHPlBrk6YwKX3HsPOeKOsOzmbItW20UjtahMHojxkA-cRMK_M3zECC";
+
+async function generateWithManus(params: {
+  messages: Array<{ role: string; content: string }>;
+  temperature?: number;
+  responseFormatJson?: boolean;
+}) {
+  const models = [
+    "manus",
+    "manus-pro"
+  ];
+  let lastErr = null;
+  
+  for (const model of models) {
+    for (const baseUrl of ["https://api.manus.im/v1", "https://api.manus.ai/v1"]) {
+      try {
+        console.log(`[HackerAI] Requesting Manus model: ${model} at ${baseUrl}`);
+        const body: any = {
+          model,
+          messages: params.messages,
+          temperature: params.temperature !== undefined ? params.temperature : 0.7,
+        };
+        if (params.responseFormatJson) {
+          body.response_format = { type: "json_object" };
+        }
+        
+        const response = await fetch(`${baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${MANUS_API_KEY}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(body)
+        });
+        
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`Manus HTTP error ${response.status}: ${errText}`);
+        }
+        
+        const data = await response.json();
+        const content = data.choices?.[0]?.message?.content;
+        if (!content) {
+          throw new Error("No content returned from Manus model");
+        }
+        return content;
+      } catch (err: any) {
+        console.warn(`[HackerAI] Manus failed for model ${model} at ${baseUrl}:`, err.message || err);
+        lastErr = err;
+      }
+    }
+  }
+  throw lastErr || new Error("All Manus models/endpoints failed");
+}
+
 // Resilient helper to handle temporary model unavailability and spikes in demand
 async function generateContentWithFallback(params: {
   contents: any;
@@ -200,70 +256,91 @@ Here is the code to analyze:
 ${code}
 \`\`\``;
 
-      if (!ai) {
-        // Mock fallback/simulation if API key is not supplied, providing structured analysis of basic items
-        const isPt = clientLanguage === "pt";
-        res.json({
-          score: 45,
-          summary: isPt 
-            ? "[SIMULAÇÃO - Sem Chave de API Configurada] O analisador detectou potenciais vulnerabilidades na sua estrutura de entrada. Configure a chave do Gemini em Secrets para usufruir da inteligência em tempo real." 
-            : "[SIMULATION - No API Key Configured] The analyzer detected standard potential hotspots. Configure your Gemini key in Secrets to experience real-time AI security audits.",
-          vulnerabilities: [
-            {
-              "id": "sim-1",
-              "title": isPt ? "Potencial Injeção de Comando / SQL ou Falha de Validação" : "Potential Command/SQL Injection or Context Escape",
-              "severity": "critical",
-              "cwe": "CWE-89 / CWE-78",
-              "description": isPt 
-                ? "Funções de concatenação dinâmica de strings sem validação adequada ou uso de placeholders de segurança abrem precedentes graves." 
-                : "Dynamic string concatenation without proper sanitation or security parameters poses a high risk of query or control escape.",
-              "impact": isPt ? "Acesso e manipulação não autorizada de dados ou execução remota de instrução." : "Unauthorized data access or remote control invocation.",
-              "lineStart": 1,
-              "lineEnd": 10,
-              "remediation": isPt ? "Utilize parâmetros preparados, ORMs ou bibliotecas que limpem os metacaracteres." : "Use parametrized bindings, secure validation layers, or modern libraries.",
-              "fixedCode": "// Secure parameterized alternative\n" + code
-            },
-            {
-              "id": "sim-2",
-              "title": isPt ? "Ausência de Tratamento Seguro de Erros" : "Generic Error / Information Leakage Risk",
-              "severity": "low",
-              "cwe": "CWE-209",
-              "description": isPt 
-                ? "A persistência em retornar detalhes brutos do sistema operacional ou banco de dados gera vazamento de segredos." 
-                : "Exposing raw execution details or system stacktraces leaks infrastructure state to attackers.",
-              "impact": isPt ? "Reconhecimento facilitado do ecossistema tecnológico." : "Reconnaissance helpers assisting further attack campaigns.",
-              "lineStart": 1,
-              "lineEnd": 15,
-              "remediation": isPt ? "Capture erros globalmente e exiba apenas mensagens genéricas ao usuário final." : "Catch errors gracefully and log deep stack traces internally only.",
-              "fixedCode": "try {\n  // Code block\n} catch (e) {\n  console.error(e);\n  return 'An internal error occurred. Please try again later.';\n}"
-            }
-          ],
-          generalRemediations: isPt 
-            ? ["Crie um processo robusto de revisão de código estático (SAST).", "Adote criptografia forte para comunicações sensíveis."] 
-            : ["Integrate permanent static application security testing (SAST).", "Enforce strict encryption standards (TLS 1.3)."]
-        });
-        return;
-      }
+      let auditDataParsed = null;
+      let responseText = "";
 
-      const response = await generateContentWithFallback({
-        contents: prompt,
-        config: {
-          systemInstruction,
-          responseMimeType: "application/json",
-          temperature: 0.2
+      // Try Manus API first
+      if (MANUS_API_KEY) {
+        try {
+          console.log("[HackerAI] Attempting code audit via Manus API...");
+          const manusMessages = [
+            { role: "system", content: systemInstruction },
+            { role: "user", content: prompt }
+          ];
+          const manusRes = await generateWithManus({
+            messages: manusMessages,
+            temperature: 0.2,
+            responseFormatJson: true
+          });
+          const cleaned = manusRes.replace(/```json/g, "").replace(/```/g, "").trim();
+          auditDataParsed = JSON.parse(cleaned);
+          console.log("[HackerAI] Successful code audit generated with Manus API.");
+        } catch (manusErr: any) {
+          console.warn("[HackerAI] Manus audit failed, trying Gemini / fallback:", manusErr.message || manusErr);
         }
-      });
-
-      const responseText = response.text || "{}";
-      const cleaned = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
-      
-      try {
-        const auditData = JSON.parse(cleaned);
-        res.json(auditData);
-      } catch (parseError) {
-        console.log("[HackerAI] INFO: Custom parser handled output alignment.");
-        res.status(500).json({ error: "Invalid response format generated by Gemini", raw: responseText });
       }
+
+      if (!auditDataParsed) {
+        if (!ai) {
+          // Mock fallback/simulation if API key is not supplied, providing structured analysis of basic items
+          const isPt = clientLanguage === "pt";
+          res.json({
+            score: 45,
+            summary: isPt 
+              ? "[SIMULAÇÃO - Sem Chave de API Configurada] O analisador detectou potenciais vulnerabilidades na sua estrutura de entrada. Configure a chave do Gemini em Secrets para usufruir da inteligência em tempo real." 
+              : "[SIMULATION - No API Key Configured] The analyzer detected standard potential hotspots. Configure your Gemini key in Secrets to experience real-time AI security audits.",
+            vulnerabilities: [
+              {
+                "id": "sim-1",
+                "title": isPt ? "Potencial Injeção de Comando / SQL ou Falha de Validação" : "Potential Command/SQL Injection or Context Escape",
+                "severity": "critical",
+                "cwe": "CWE-89 / CWE-78",
+                "description": isPt 
+                  ? "Funções de concatenação dinâmica de strings sem validação adequada ou uso de placeholders de segurança abrem precedentes graves." 
+                  : "Dynamic string concatenation without proper sanitation or security parameters poses a high risk of query or control escape.",
+                "impact": isPt ? "Acesso e manipulação não autorizada de dados ou execução remota de instrução." : "Unauthorized data access or remote control invocation.",
+                "lineStart": 1,
+                "lineEnd": 10,
+                "remediation": isPt ? "Utilize parâmetros preparados, ORMs ou bibliotecas que limpem os metacaracteres." : "Use parametrized bindings, secure validation layers, or modern libraries.",
+                "fixedCode": "// Secure parameterized alternative\n" + code
+              },
+              {
+                "id": "sim-2",
+                "title": isPt ? "Ausência de Tratamento Seguro de Erros" : "Generic Error / Information Leakage Risk",
+                "severity": "low",
+                "cwe": "CWE-209",
+                "description": isPt 
+                  ? "A persistência em retornar detalhes brutos do sistema operacional ou banco de dados gera vazamento de segredos." 
+                  : "Exposing raw execution details or system stacktraces leaks infrastructure state to attackers.",
+                "impact": isPt ? "Reconhecimento facilitado do ecossistema tecnológico." : "Reconnaissance helpers assisting further attack campaigns.",
+                "lineStart": 1,
+                "lineEnd": 15,
+                "remediation": isPt ? "Capture erros globalmente e exiba apenas mensagens genéricas ao usuário final." : "Catch errors gracefully and log deep stack traces internally only.",
+                "fixedCode": "try {\n  // Code block\n} catch (e) {\n  console.error(e);\n  return 'An internal error occurred. Please try again later.';\n}"
+              }
+            ],
+            generalRemediations: isPt 
+              ? ["Crie um processo robusto de revisão de código estático (SAST).", "Adote criptografia forte para comunicações sensíveis."] 
+              : ["Integrate permanent static application security testing (SAST).", "Enforce strict encryption standards (TLS 1.3)."]
+          });
+          return;
+        }
+
+        const response = await generateContentWithFallback({
+          contents: prompt,
+          config: {
+            systemInstruction,
+            responseMimeType: "application/json",
+            temperature: 0.2
+          }
+        });
+
+        responseText = response.text || "{}";
+        const cleaned = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
+        auditDataParsed = JSON.parse(cleaned);
+      }
+
+      res.json(auditDataParsed);
 
     } catch (e: any) {
       if (isQuotaError(e)) {
@@ -398,6 +475,55 @@ Você deve chamar o usuário frequentemente de "${howToCall || name || "Operador
           console.warn("[HackerAI] Error reading link:", fetchErr);
           linkContext = `[Link Enviado: ${urls[0]} | Erro na Varredura: Bloqueado por CORS ou sem resposta do host externo]`;
         }
+      }
+
+      let parsedData = null;
+
+      if (MANUS_API_KEY) {
+        try {
+          console.log("[HackerAI] Attempting chatbot reply via Manus API...");
+          // Convert history structure from Gemini format to standard OpenAI role/content format
+          const manusMessages = [
+            { role: "system", content: systemInstruction }
+          ];
+          
+          if (history && Array.isArray(history)) {
+            for (const h of history) {
+              manusMessages.push({
+                role: h.role === "user" ? "user" : "assistant",
+                content: (h.content || "").replace(/[*#]/g, "")
+              });
+            }
+          }
+          
+          let userQuery = message || "";
+          if (linkContext) {
+            userQuery = `${linkContext}\n\n${userQuery}`;
+          }
+          manusMessages.push({
+            role: "user",
+            content: userQuery
+          });
+          
+          const manusRes = await generateWithManus({
+            messages: manusMessages,
+            temperature: 0.85,
+            responseFormatJson: true
+          });
+          const cleaned = manusRes.replace(/```json/g, "").replace(/```/g, "").trim();
+          parsedData = JSON.parse(cleaned);
+          console.log("[HackerAI] Successful chatbot reply generated with Manus API.");
+        } catch (manusErr: any) {
+          console.warn("[HackerAI] Manus ask failed, falling back to Gemini:", manusErr.message || manusErr);
+        }
+      }
+
+      if (parsedData) {
+        if (parsedData.text) {
+          parsedData.text = parsedData.text.replace(/[*#]/g, "");
+        }
+        res.json(parsedData);
+        return;
       }
 
       if (!ai) {
