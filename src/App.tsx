@@ -610,31 +610,58 @@ export default function App() {
       utterance.lang = lang === "pt" ? "pt-BR" : "en-US";
       
       // Determine voice tone pitch & rate based on personality!
+      // Configured with lower pitches to sound masculine, natural, and highly clear
       const p = personality || currentPersonality;
       if (p === "neon_synth") {
-        utterance.rate = 1.15;
-        utterance.pitch = 1.35;
-      } else if (p === "null_entropy") {
-        utterance.rate = 0.88;
-        utterance.pitch = 0.95;
-      } else if (p === "the_architect") {
-        utterance.rate = 0.95;
-        utterance.pitch = 0.75;
-      } else if (p === "midnight_specter") {
         utterance.rate = 1.05;
-        utterance.pitch = 1.15;
+        utterance.pitch = 0.88;
+      } else if (p === "null_entropy") {
+        utterance.rate = 0.90;
+        utterance.pitch = 0.78;
+      } else if (p === "the_architect") {
+        utterance.rate = 0.98;
+        utterance.pitch = 0.80;
+      } else if (p === "midnight_specter") {
+        utterance.rate = 1.02;
+        utterance.pitch = 0.82;
       } else if (p === "glitch_zero") {
-        utterance.rate = 1.35;
-        utterance.pitch = 1.45;
+        utterance.rate = 1.15; // Slightly slower than before for better understandability
+        utterance.pitch = 0.90;
       } else {
-        utterance.rate = 1.05; // Default safe rate
-        utterance.pitch = 1.0;
+        utterance.rate = 1.00; // Default safe rate
+        utterance.pitch = 0.85; // Natural deeper pitch
       }
 
       const voices = window.speechSynthesis.getVoices();
-      const ptVoice = voices.find(v => v.lang.includes("pt-BR") || v.lang.includes("PT") || v.lang.includes("pt"));
-      if (ptVoice) {
-        utterance.voice = ptVoice;
+      const isPt = lang === "pt";
+      const targetVoices = voices.filter(v => 
+        isPt 
+          ? (v.lang.toLowerCase().includes("pt"))
+          : (v.lang.toLowerCase().includes("en"))
+      );
+
+      // Prioritize known masculine voice names to guarantee a male voice
+      const maleVoiceKeywords = isPt 
+        ? ["daniel", "felipe", "masculino", "male", "helio", "antonio", "filipe", "ricardo", "felipe", "julio", "thiago", "man"]
+        : ["david", "mark", "male", "george", "ravit", "guy", "microsoft david", "google us english", "en-us-x-sfg-local"];
+
+      let selectedVoice = targetVoices.find(v => 
+        maleVoiceKeywords.some(keyword => v.name.toLowerCase().includes(keyword))
+      );
+
+      // Fallback: If no masculine voice is found, try to avoid female voices
+      if (!selectedVoice && targetVoices.length > 0) {
+        const femaleVoiceKeywords = isPt
+          ? ["maria", "luciana", "zizi", "joana", "raquel", "victoria", "female", "feminino", "google português", "heloisa", "lucia"]
+          : ["zira", "hazel", "susan", "female", "feminino", "google uk english female"];
+        
+        selectedVoice = targetVoices.find(v => 
+          !femaleVoiceKeywords.some(keyword => v.name.toLowerCase().includes(keyword))
+        ) || targetVoices[0];
+      }
+
+      if (selectedVoice) {
+        utterance.voice = selectedVoice;
       }
 
       utterance.onstart = () => {
