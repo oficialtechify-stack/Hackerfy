@@ -5,8 +5,9 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 dotenv.config();
 
-// Ensure the Gemini API key is available
-const apiKey = process.env.GEMINI_API_KEY;
+// Ensure the Gemini API key is available (support standard GEMINI_API_KEY, or fallback to MANUS_API_KEY if it's a Gemini key)
+const apiKey = process.env.GEMINI_API_KEY || 
+               (process.env.MANUS_API_KEY && process.env.MANUS_API_KEY.startsWith("AIza") ? process.env.MANUS_API_KEY : undefined);
 let ai: GoogleGenAI | null = null;
 if (apiKey) {
   ai = new GoogleGenAI({
@@ -21,7 +22,7 @@ if (apiKey) {
   console.warn("Warning: GEMINI_API_KEY environment variable is not defined.");
 }
 
-// Manus API Configuration and helper function
+// Multi-provider OpenAI-compatible and Gemini fallback logic
 const MANUS_API_KEY = process.env.MANUS_API_KEY || "sk-qdQ2TpE3xIbzOdeuVmyiVsr-ibweSFuxTc0GEVIHPlBrk6YwKX3HsPOeKOsOzmbItW20UjtahMHojxkA-cRMK_M3zECC";
 
 async function generateWithManus(params: {
@@ -29,52 +30,123 @@ async function generateWithManus(params: {
   temperature?: number;
   responseFormatJson?: boolean;
 }) {
-  const models = [
-    "manus",
-    "manus-pro"
-  ];
-  let lastErr = null;
-  
-  for (const model of models) {
-    for (const baseUrl of ["https://api.manus.im/v1", "https://api.manus.ai/v1"]) {
-      try {
-        console.log(`[HackerAI] Requesting Manus model: ${model} at ${baseUrl}`);
-        const body: any = {
-          model,
-          messages: params.messages,
-          temperature: params.temperature !== undefined ? params.temperature : 0.7,
-        };
-        if (params.responseFormatJson) {
-          body.response_format = { type: "json_object" };
+  // 1. Try Gemini if initialized
+  if (ai) {
+    try {
+      console.log("[HackerAI] Falling back to Gemini in generateWithManus...");
+      const chatContents = [];
+      let systemInstruction = "";
+      for (const msg of params.messages) {
+        if (msg.role === "system") {
+          systemInstruction = msg.content;
+        } else {
+          chatContents.push({
+            role: msg.role === "user" ? "user" : "model",
+            parts: [{ text: msg.content }]
+          });
         }
-        
-        const response = await fetch(`${baseUrl}/chat/completions`, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${MANUS_API_KEY}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(body)
-        });
-        
-        if (!response.ok) {
-          const errText = await response.text();
-          throw new Error(`Manus HTTP error ${response.status}: ${errText}`);
-        }
-        
-        const data = await response.json();
-        const content = data.choices?.[0]?.message?.content;
-        if (!content) {
-          throw new Error("No content returned from Manus model");
-        }
-        return content;
-      } catch (err: any) {
-        console.warn(`[HackerAI] Manus failed for model ${model} at ${baseUrl}:`, err.message || err);
-        lastErr = err;
       }
+      const response = await generateContentWithFallback({
+        contents: chatContents,
+        config: {
+          systemInstruction,
+          responseMimeType: params.responseFormatJson ? "application/json" : undefined,
+          temperature: params.temperature !== undefined ? params.temperature : 0.7
+        }
+      });
+      if (response.text) {
+        return response.text;
+      }
+    } catch (geminiErr: any) {
+      console.warn("[HackerAI] Gemini fallback inside generateWithManus failed:", geminiErr.message || geminiErr);
     }
   }
-  throw lastErr || new Error("All Manus models/endpoints failed");
+
+  // 2. Select key and set up robust targets list for standard OpenAI-compatible APIs
+  const activeKey = process.env.MANUS_API_KEY ||
+                    process.env.GEMINI_API_KEY ||
+                    process.env.OPENAI_API_KEY ||
+                    process.env.DEEPSEEK_API_KEY ||
+                    process.env.GROQ_API_KEY ||
+                    MANUS_API_KEY;
+
+  const targets = [];
+  
+  // If activeKey starts with "sk-or-", prioritize OpenRouter
+  if (activeKey.startsWith("sk-or-")) {
+    targets.push(
+      { baseUrl: "https://openrouter.ai/api/v1", model: "google/gemini-2.5-flash" },
+      { baseUrl: "https://openrouter.ai/api/v1", model: "openai/gpt-4o-mini" }
+    );
+  }
+  // If activeKey starts with "gsk_", prioritize Groq
+  else if (activeKey.startsWith("gsk_")) {
+    targets.push(
+      { baseUrl: "https://api.groq.com/openai/v1", model: "llama-3.3-70b-versatile" },
+      { baseUrl: "https://api.groq.com/openai/v1", model: "llama3-8b-8192" }
+    );
+  }
+  // Otherwise, try standard DeepSeek, OpenAI, OpenRouter, Groq, and original manus hosts
+  else {
+    targets.push(
+      // DeepSeek
+      { baseUrl: "https://api.deepseek.com/v1", model: "deepseek-chat" },
+      { baseUrl: "https://api.deepseek.com", model: "deepseek-chat" },
+      // OpenAI Official
+      { baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini" },
+      { baseUrl: "https://api.openai.com/v1", model: "gpt-3.5-turbo" },
+      // OpenRouter
+      { baseUrl: "https://openrouter.ai/api/v1", model: "google/gemini-2.5-flash" },
+      { baseUrl: "https://openrouter.ai/api/v1", model: "openai/gpt-4o-mini" },
+      // Groq
+      { baseUrl: "https://api.groq.com/openai/v1", model: "llama-3.3-70b-versatile" },
+      // Original Manus
+      { baseUrl: "https://api.manus.im/v1", model: "manus" },
+      { baseUrl: "https://api.manus.ai/v1", model: "manus-pro" }
+    );
+  }
+
+  let lastErr = null;
+  
+  for (const target of targets) {
+    try {
+      console.log(`[HackerAI] Requesting model: ${target.model} at ${target.baseUrl}`);
+      const body: any = {
+        model: target.model,
+        messages: params.messages,
+        temperature: params.temperature !== undefined ? params.temperature : 0.7,
+      };
+      if (params.responseFormatJson) {
+        body.response_format = { type: "json_object" };
+      }
+      
+      const response = await fetch(`${target.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${activeKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body)
+      });
+      
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`HTTP error ${response.status} from ${target.baseUrl}: ${errText}`);
+      }
+      
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content;
+      if (!content) {
+        throw new Error("No content returned from model");
+      }
+      return content;
+    } catch (err: any) {
+      console.warn(`[HackerAI] Failed for model ${target.model} at ${target.baseUrl}:`, err.message || err);
+      lastErr = err;
+    }
+  }
+  
+  throw lastErr || new Error("All model backends and fallback endpoints failed");
 }
 
 // Resilient helper to handle temporary model unavailability and spikes in demand
@@ -154,8 +226,9 @@ async function startServer() {
   const PORT = 3000;
 
   // Serve static application bundle or Vite dev server
-  if (process.env.NODE_ENV !== "production") {
-    const { createServer: createViteServer } = await import("vite");
+  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+    const viteModule = "vite";
+    const { createServer: createViteServer } = await import(viteModule);
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
