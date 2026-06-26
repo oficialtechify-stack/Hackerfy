@@ -1380,7 +1380,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
 
   // Return JSX
   return (
-    <div className="min-h-screen bg-[#0d0d0e] text-[#ededee] font-sans selection:bg-[#3b82f6] selection:text-white flex relative overflow-x-hidden">
+    <div className="min-h-screen bg-[#0d0d0e] text-[#ededee] font-sans selection:bg-[#3b82f6] selection:text-white flex flex-col lg:flex-row relative overflow-x-hidden">
       
       <style>{`
         @keyframes fadeIn {
@@ -1987,7 +1987,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
       </aside>
 
       {/* Outer wrapper */}
-      <div className="flex-1 min-h-screen flex flex-col justify-start relative">
+      <div className="flex-1 min-h-screen flex flex-col justify-start relative w-full min-w-0">
 
         {/* Top Header Controls: star upgrade logic, language buttons and Incognito status */}
         <header className="px-3 sm:px-5 py-3 sm:py-4 flex flex-col md:flex-row gap-3 md:gap-0 justify-between items-center bg-transparent z-15 border-b border-[#1e1e20]/40 md:border-b-0 w-full">
