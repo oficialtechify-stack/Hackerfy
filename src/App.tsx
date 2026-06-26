@@ -610,26 +610,28 @@ export default function App() {
       utterance.lang = lang === "pt" ? "pt-BR" : "en-US";
       
       // Determine voice tone pitch & rate based on personality!
-      // Configured with lower pitches to sound masculine, natural, and highly clear
+      // Keeping pitch near 1.0 (between 0.92 and 1.05) prevents the metallic digital vocoder distortion
+      // common in native browser speech engines when pitch is altered too much.
       const p = personality || currentPersonality;
       if (p === "neon_synth") {
-        utterance.rate = 1.05;
-        utterance.pitch = 0.88;
-      } else if (p === "null_entropy") {
-        utterance.rate = 0.90;
-        utterance.pitch = 0.78;
-      } else if (p === "the_architect") {
-        utterance.rate = 0.98;
-        utterance.pitch = 0.80;
-      } else if (p === "midnight_specter") {
         utterance.rate = 1.02;
-        utterance.pitch = 0.82;
+        utterance.pitch = 0.98;
+      } else if (p === "null_entropy") {
+        utterance.rate = 0.92;
+        utterance.pitch = 0.95;
+      } else if (p === "the_architect") {
+        // Jarvis Tone: Calm, measured, perfectly clear, deeply polite, natural
+        utterance.rate = 0.95;
+        utterance.pitch = 0.96;
+      } else if (p === "midnight_specter") {
+        utterance.rate = 1.00;
+        utterance.pitch = 0.95;
       } else if (p === "glitch_zero") {
-        utterance.rate = 1.15; // Slightly slower than before for better understandability
-        utterance.pitch = 0.90;
+        utterance.rate = 1.08;
+        utterance.pitch = 1.02;
       } else {
-        utterance.rate = 1.00; // Default safe rate
-        utterance.pitch = 0.85; // Natural deeper pitch
+        utterance.rate = 0.96;
+        utterance.pitch = 0.97;
       }
 
       const voices = window.speechSynthesis.getVoices();
@@ -642,26 +644,53 @@ export default function App() {
 
       // Prioritize known masculine voice names to guarantee a male voice
       const maleVoiceKeywords = isPt 
-        ? ["daniel", "felipe", "masculino", "male", "helio", "antonio", "filipe", "ricardo", "felipe", "julio", "thiago", "man"]
-        : ["david", "mark", "male", "george", "ravit", "guy", "microsoft david", "google us english", "en-us-x-sfg-local"];
+        ? ["daniel", "felipe", "masculino", "male", "helio", "antonio", "filipe", "ricardo", "felipe", "julio", "thiago", "man", "artur", "arthur"]
+        : ["david", "mark", "male", "george", "ravit", "guy", "microsoft david", "google us english", "en-us-x-sfg-local", "daniel"];
 
-      let selectedVoice = targetVoices.find(v => 
-        maleVoiceKeywords.some(keyword => v.name.toLowerCase().includes(keyword))
-      );
+      // Premium/Neural markers (Google Cloud voices, Microsoft Neural, Apple Enhanced/Premium)
+      const premiumKeywords = ["google", "natural", "neural", "enhanced", "premium", "microsoft", "desktop"];
 
-      // Fallback: If no masculine voice is found, try to avoid female voices
-      if (!selectedVoice && targetVoices.length > 0) {
-        const femaleVoiceKeywords = isPt
-          ? ["maria", "luciana", "zizi", "joana", "raquel", "victoria", "female", "feminino", "google português", "heloisa", "lucia"]
-          : ["zira", "hazel", "susan", "female", "feminino", "google uk english female"];
+      // Match scoring system to pick the absolute best voice available in the browser:
+      // Score 4: Premium Neural Masculine
+      // Score 3: Standard Masculine
+      // Score 2: Premium Neural Neutral/Any
+      // Score 1: Standard Any
+      let bestVoice = null;
+      let highestScore = -1;
+
+      for (const voice of targetVoices) {
+        const nameLower = voice.name.toLowerCase();
+        let score = 0;
         
-        selectedVoice = targetVoices.find(v => 
-          !femaleVoiceKeywords.some(keyword => v.name.toLowerCase().includes(keyword))
-        ) || targetVoices[0];
+        const isMale = maleVoiceKeywords.some(keyword => nameLower.includes(keyword));
+        const isPremium = premiumKeywords.some(keyword => nameLower.includes(keyword));
+
+        // Let's filter out known female names to prevent mismatched genders
+        const femaleVoiceKeywords = isPt
+          ? ["maria", "luciana", "zizi", "joana", "raquel", "victoria", "female", "feminino", "google português", "heloisa", "lucia", "samantha", "susan"]
+          : ["zira", "hazel", "susan", "female", "feminino", "google uk english female", "samantha", "karen"];
+        const isFemale = femaleVoiceKeywords.some(keyword => nameLower.includes(keyword));
+
+        if (isFemale) {
+          score = 0; // Extremely low priority
+        } else if (isMale && isPremium) {
+          score = 4;
+        } else if (isMale) {
+          score = 3;
+        } else if (isPremium) {
+          score = 2;
+        } else {
+          score = 1;
+        }
+
+        if (score > highestScore) {
+          highestScore = score;
+          bestVoice = voice;
+        }
       }
 
-      if (selectedVoice) {
-        utterance.voice = selectedVoice;
+      if (bestVoice) {
+        utterance.voice = bestVoice;
       }
 
       utterance.onstart = () => {
