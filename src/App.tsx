@@ -476,6 +476,7 @@ export default function App() {
   const audioChunksRef = useRef<Blob[]>([]);
   const recognitionRef = useRef<any>(null);
   const sttRecognitionRef = useRef<any>(null);
+  const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // Initialize Speech recognition for "Conversa Contínua (Escuta Ativa)"
   const startSpeechRecognition = () => {
@@ -588,16 +589,62 @@ export default function App() {
     }
   };
 
-   // TTS - Speech Synthesis (Text-to-Speech)
-  const speakText = (text: string, personality?: string) => {
-    if (typeof window === "undefined" || !window.speechSynthesis) {
-      setVoiceState("idle");
-      return;
-    }
+  // Helper to convert raw 16-bit Mono PCM little-endian audio to WAV Blob URL
+  const pcmToWav = (pcmBase64: string, sampleRate: number = 24000): string => {
+    try {
+      const binaryString = window.atob(pcmBase64);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
 
+      const buffer = new ArrayBuffer(44 + len);
+      const view = new DataView(buffer);
+
+      /* RIFF identifier */
+      view.setUint32(0, 0x52494646, false); // "RIFF"
+      /* file length */
+      view.setUint32(4, 36 + len, true);
+      /* RIFF type */
+      view.setUint32(8, 0x57415645, false); // "WAVE"
+      /* format chunk identifier */
+      view.setUint32(12, 0x666d7420, false); // "fmt "
+      /* format chunk length */
+      view.setUint32(16, 16, true);
+      /* sample format (raw PCM = 1) */
+      view.setUint16(20, 1, true);
+      /* channel count (mono = 1) */
+      view.setUint16(22, 1, true);
+      /* sample rate */
+      view.setUint32(24, sampleRate, true);
+      /* byte rate (sample rate * block align) */
+      view.setUint32(28, sampleRate * 2, true);
+      /* block align (channel count * bytes per sample) */
+      view.setUint16(32, 2, true);
+      /* bits per sample */
+      view.setUint16(34, 16, true);
+      /* data chunk identifier */
+      view.setUint32(36, 0x64617461, false); // "data"
+      /* data chunk length */
+      view.setUint32(40, len, true);
+
+      const uint8Buffer = new Uint8Array(buffer);
+      uint8Buffer.set(bytes, 44);
+
+      const blob = new Blob([buffer], { type: "audio/wav" });
+      return URL.createObjectURL(blob);
+    } catch (e) {
+      console.error("Failed to convert PCM to WAV:", e);
+      return "";
+    }
+  };
+
+  // TTS - Speech Synthesis (Text-to-Speech) using Gemini TTS (gemini-3.1-flash-tts-preview)
+  const speakText = async (text: string, personality?: string) => {
     try {
       // Abort active readings
-      window.speechSynthesis.cancel();
+      stopTTS();
 
       // Clean text of technical markdown or large code structures so voice synthesising runs naturally
       const cleanText = text
@@ -606,98 +653,63 @@ export default function App() {
         .replace(/[*#_\-\\/[\]()]/g, " ")
         .trim();
 
-      const utterance = new SpeechSynthesisUtterance(cleanText);
-      utterance.lang = lang === "pt" ? "pt-BR" : "en-US";
-      
-      // Determine voice tone pitch & rate based on personality!
-      // Keeping pitch near 1.0 (between 0.92 and 1.05) prevents the metallic digital vocoder distortion
-      // common in native browser speech engines when pitch is altered too much.
+      if (!cleanText) {
+        setVoiceState("idle");
+        return;
+      }
+
+      setVoiceState("thinking");
+
       const p = personality || currentPersonality;
-      if (p === "neon_synth") {
-        utterance.rate = 1.02;
-        utterance.pitch = 0.98;
-      } else if (p === "null_entropy") {
-        utterance.rate = 0.92;
-        utterance.pitch = 0.95;
-      } else if (p === "the_architect") {
-        // Jarvis Tone: Calm, measured, perfectly clear, deeply polite, natural
-        utterance.rate = 0.95;
-        utterance.pitch = 0.96;
-      } else if (p === "midnight_specter") {
-        utterance.rate = 1.00;
-        utterance.pitch = 0.95;
-      } else if (p === "glitch_zero") {
-        utterance.rate = 1.08;
-        utterance.pitch = 1.02;
+      const response = await fetch("/api/tts", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          text: cleanText,
+          language: lang,
+          personality: p
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`TTS server response error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (!data.audio) {
+        throw new Error("No audio returned from Gemini TTS");
+      }
+
+      const mimeType = data.mimeType || "audio/pcm";
+      let audioUrl = "";
+
+      if (mimeType.includes("pcm")) {
+        audioUrl = pcmToWav(data.audio, 24000);
       } else {
-        utterance.rate = 0.96;
-        utterance.pitch = 0.97;
-      }
-
-      const voices = window.speechSynthesis.getVoices();
-      const isPt = lang === "pt";
-      const targetVoices = voices.filter(v => 
-        isPt 
-          ? (v.lang.toLowerCase().includes("pt"))
-          : (v.lang.toLowerCase().includes("en"))
-      );
-
-      // Prioritize known masculine voice names to guarantee a male voice
-      const maleVoiceKeywords = isPt 
-        ? ["daniel", "felipe", "masculino", "male", "helio", "antonio", "filipe", "ricardo", "felipe", "julio", "thiago", "man", "artur", "arthur"]
-        : ["david", "mark", "male", "george", "ravit", "guy", "microsoft david", "google us english", "en-us-x-sfg-local", "daniel"];
-
-      // Premium/Neural markers (Google Cloud voices, Microsoft Neural, Apple Enhanced/Premium)
-      const premiumKeywords = ["google", "natural", "neural", "enhanced", "premium", "microsoft", "desktop"];
-
-      // Match scoring system to pick the absolute best voice available in the browser:
-      // Score 4: Premium Neural Masculine
-      // Score 3: Standard Masculine
-      // Score 2: Premium Neural Neutral/Any
-      // Score 1: Standard Any
-      let bestVoice = null;
-      let highestScore = -1;
-
-      for (const voice of targetVoices) {
-        const nameLower = voice.name.toLowerCase();
-        let score = 0;
-        
-        const isMale = maleVoiceKeywords.some(keyword => nameLower.includes(keyword));
-        const isPremium = premiumKeywords.some(keyword => nameLower.includes(keyword));
-
-        // Let's filter out known female names to prevent mismatched genders
-        const femaleVoiceKeywords = isPt
-          ? ["maria", "luciana", "zizi", "joana", "raquel", "victoria", "female", "feminino", "google português", "heloisa", "lucia", "samantha", "susan"]
-          : ["zira", "hazel", "susan", "female", "feminino", "google uk english female", "samantha", "karen"];
-        const isFemale = femaleVoiceKeywords.some(keyword => nameLower.includes(keyword));
-
-        if (isFemale) {
-          score = 0; // Extremely low priority
-        } else if (isMale && isPremium) {
-          score = 4;
-        } else if (isMale) {
-          score = 3;
-        } else if (isPremium) {
-          score = 2;
-        } else {
-          score = 1;
+        const binaryString = window.atob(data.audio);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
         }
-
-        if (score > highestScore) {
-          highestScore = score;
-          bestVoice = voice;
-        }
+        const blob = new Blob([bytes], { type: mimeType });
+        audioUrl = URL.createObjectURL(blob);
       }
 
-      if (bestVoice) {
-        utterance.voice = bestVoice;
+      if (!audioUrl) {
+        throw new Error("Failed to create Audio URL");
       }
 
-      utterance.onstart = () => {
+      const audio = new Audio(audioUrl);
+      ttsAudioRef.current = audio;
+
+      audio.onplay = () => {
         setVoiceState("speaking");
       };
 
-      utterance.onend = () => {
+      audio.onended = () => {
         setVoiceState("idle");
         // Re-enable microphones listening immediately if continuous hands-free active is desired
         if (isVoiceModeActive && isContinuousListening && recognitionRef.current) {
@@ -709,12 +721,12 @@ export default function App() {
         }
       };
 
-      utterance.onerror = (event) => {
-        console.warn("Speech Synthesis error:", event);
+      audio.onerror = (event) => {
+        console.warn("Audio playback error:", event);
         setVoiceState("idle");
       };
 
-      window.speechSynthesis.speak(utterance);
+      await audio.play();
     } catch (e) {
       console.error("Text-to-Speech error:", e);
       setVoiceState("idle");
@@ -723,8 +735,19 @@ export default function App() {
 
   // Halt all speak processes
   const stopTTS = () => {
-    if (typeof window !== "undefined" && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
+    if (typeof window !== "undefined") {
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+      if (ttsAudioRef.current) {
+        try {
+          ttsAudioRef.current.pause();
+          ttsAudioRef.current.currentTime = 0;
+        } catch (e) {
+          // Ignore
+        }
+        ttsAudioRef.current = null;
+      }
     }
     setVoiceState("idle");
   };

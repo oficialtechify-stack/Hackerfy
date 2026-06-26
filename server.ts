@@ -770,6 +770,91 @@ Você deve chamar o usuário frequentemente de "${howToCall || name || "Operador
     }
   });
 
+  // API Route: Convert text to high-quality human speech using Gemini TTS (gemini-3.1-flash-tts-preview)
+  app.post("/api/tts", async (req, res) => {
+    try {
+      const { text, language, personality } = req.body;
+      if (!text || !text.trim()) {
+        res.status(400).json({ error: "No text supplied for TTS" });
+        return;
+      }
+
+      if (!ai) {
+        res.status(500).json({ error: "GoogleGenAI client is not initialized." });
+        return;
+      }
+
+      const isPt = language === "pt";
+      
+      // Determine voice style prompt based on personality & language
+      // E.g., The Architect is our Jarvis: calm, polite, respectful, and sophisticated.
+      let voiceInstruction = "";
+      if (personality === "neon_synth") {
+        voiceInstruction = isPt 
+          ? "Diga com voz enérgica, jovem, levemente rebelde, mas extremamente clara: "
+          : "Say in an energetic, youthful, slightly rebellious, but extremely clear voice: ";
+      } else if (personality === "null_entropy") {
+        voiceInstruction = isPt 
+          ? "Diga com tom calmo, intelectual, sereno e pausado: "
+          : "Say in a calm, intellectual, serene, and measured voice: ";
+      } else if (personality === "the_architect") {
+        // Jarvis Tone: Perfect, sophisticated, loyal, and polite
+        voiceInstruction = isPt 
+          ? "Diga com tom elegante, polido, sofisticado, leal e prestativo como Jarvis (do Homem de Ferro): "
+          : "Say in an elegant, polite, sophisticated, loyal, and helpful voice like Jarvis (from Iron Man): ";
+      } else if (personality === "midnight_specter") {
+        voiceInstruction = isPt 
+          ? "Diga com tom levemente sussurrado, misterioso e brincalhão: "
+          : "Say in a slightly whispered, mysterious, and playful voice: ";
+      } else if (personality === "glitch_zero") {
+        voiceInstruction = isPt 
+          ? "Diga com voz direta, rápida e focada em dados cibernéticos: "
+          : "Say in a direct, fast-paced, and cyber-focused voice: ";
+      } else {
+        voiceInstruction = isPt 
+          ? "Diga com tom de voz claro, polido e natural: "
+          : "Say in a clear, polite, and natural voice: ";
+      }
+
+      const prompt = `${voiceInstruction}"${text}"`;
+
+      console.log(`[HackerAI TTS] Requesting speech synthesis for text: "${text.substring(0, 30)}..." with personality: ${personality}`);
+      
+      const response = await ai.models.generateContent({
+        model: "gemini-3.1-flash-tts-preview",
+        contents: [{ parts: [{ text: prompt }] }],
+        config: {
+          responseModalities: ["AUDIO"],
+          speechConfig: {
+            voiceConfig: {
+              // 'Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'
+              // Zephyr is a beautifully rich, clear masculine voice, perfect for a Jarvis-like character!
+              prebuiltVoiceConfig: { voiceName: "Zephyr" },
+            },
+          },
+        },
+      });
+
+      const part = response.candidates?.[0]?.content?.parts?.[0];
+      const base64Audio = part?.inlineData?.data;
+      const mimeType = part?.inlineData?.mimeType || "audio/pcm";
+
+      if (!base64Audio) {
+        throw new Error("No audio data returned from Gemini TTS API");
+      }
+
+      res.json({ audio: base64Audio, mimeType });
+    } catch (e: any) {
+      if (isQuotaError(e)) {
+        console.warn("[HackerAI TTS] Quota or rate limit reached for Gemini TTS.");
+        res.status(429).json({ error: "Gemini TTS quota limit reached. Please configure your custom GEMINI_API_KEY in Settings." });
+      } else {
+        console.error("[HackerAI TTS] Error:", e.message || e);
+        res.status(500).json({ error: e.message || "Failed to generate TTS audio" });
+      }
+    }
+  });
+
   let newsCache: any[] = [];
   let lastCacheTime = 0;
   const CACHE_TTL = 30 * 60 * 1000; // 30 minutes in-memory cache
