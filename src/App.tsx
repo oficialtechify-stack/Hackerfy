@@ -1397,7 +1397,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
 
       {/* Onboarding Wizard Overlay / Container */}
       {!isOnboarded && (
-        <div className="fixed inset-0 bg-[#0d0d0e] z-[999] overflow-y-auto p-3 sm:p-6 flex justify-center items-start sm:items-center selection:bg-emerald-600 selection:text-white">
+        <div className="fixed inset-0 bg-[#0d0d0e] z-[999] overflow-y-auto p-3 sm:p-6 flex justify-center items-center selection:bg-emerald-600 selection:text-white">
           {/* Decorative background grid and neon points */}
           <div className="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:24px_24px] opacity-25 pointer-events-none" />
           <div className="absolute top-1/4 left-1/4 w-96 h-96 rounded-full bg-emerald-500/5 blur-[120px] pointer-events-none animate-pulse" />
@@ -1990,65 +1990,97 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
       <div className="flex-1 min-h-screen flex flex-col justify-start relative">
 
         {/* Top Header Controls: star upgrade logic, language buttons and Incognito status */}
-        <header className="px-5 py-4 flex justify-between items-center bg-transparent z-15">
+        <header className="px-3 sm:px-5 py-3 sm:py-4 flex flex-col md:flex-row gap-3 md:gap-0 justify-between items-center bg-transparent z-15 border-b border-[#1e1e20]/40 md:border-b-0 w-full">
           
           {/* Logo & Tab Toggle Buttons */}
-          <div className="flex items-center gap-2.5 sm:gap-4">
-            {/* Hamburger Button for Mobile Drawer Toggle */}
-            <button
-              onClick={() => setIsSidebarExpanded(!isSidebarExpanded)}
-              className="lg:hidden p-1.5 rounded-lg hover:bg-[#1f1f22] text-stone-400 hover:text-white transition flex items-center justify-center focus:outline-none"
-              title="Menu"
-            >
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <line x1="3" y1="12" x2="21" y2="12" />
-                <line x1="3" y1="6" x2="21" y2="6" />
-                <line x1="3" y1="18" x2="21" y2="18" />
-              </svg>
-            </button>
+          <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 w-full md:w-auto">
+            <div className="flex items-center justify-between w-full sm:w-auto gap-2.5 sm:gap-4">
+              <div className="flex items-center gap-2">
+                {/* Hamburger Button for Mobile Drawer Toggle */}
+                <button
+                  onClick={() => setIsSidebarExpanded(!isSidebarExpanded)}
+                  className="lg:hidden p-1.5 rounded-lg hover:bg-[#1f1f22] text-stone-400 hover:text-white transition flex items-center justify-center focus:outline-none"
+                  title="Menu"
+                >
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <line x1="3" y1="12" x2="21" y2="12" />
+                    <line x1="3" y1="6" x2="21" y2="6" />
+                    <line x1="3" y1="18" x2="21" y2="18" />
+                  </svg>
+                </button>
 
-            <div className="flex items-center gap-2 cursor-pointer" onClick={() => startNewChat()}>
-              {/* Custom Overlapping geometric hexagon HackerAI shape */}
-              <svg className="h-5 w-5 text-emerald-400 rotate-12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5" />
-                <polygon points="12 6 18 10 18 14 12 18 6 14 6 10" className="opacity-70" />
-              </svg>
-              <span className="font-sans font-bold text-sm tracking-tight text-white select-none hidden sm:inline">
-                HackerAI
-              </span>
+                <div className="flex items-center gap-2 cursor-pointer" onClick={() => startNewChat()}>
+                  {/* Custom Overlapping geometric hexagon HackerAI shape */}
+                  <svg className="h-5 w-5 text-emerald-400 rotate-12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5" />
+                    <polygon points="12 6 18 10 18 14 12 18 6 14 6 10" className="opacity-70" />
+                  </svg>
+                  <span className="font-sans font-bold text-sm tracking-tight text-white select-none">
+                    HackerAI
+                  </span>
+                </div>
+              </div>
+
+              {/* Mobile Quick controls (Voice and Incognito) */}
+              <div className="flex items-center gap-2 md:hidden">
+                <button
+                  onClick={() => toggleVoiceModeOverlay(true)}
+                  className="flex items-center justify-center h-8 w-8 rounded-full border border-purple-500/20 text-purple-400 bg-purple-500/5 hover:bg-purple-500/10 transition animate-pulse"
+                  title="Conexão de Voz IA"
+                >
+                  <Headphones className="h-4 w-4" />
+                </button>
+
+                <div 
+                  onClick={handleToggleTemporary}
+                  className={`h-8 w-8 rounded-full flex items-center justify-center border transition duration-300 cursor-pointer ${
+                    isTemporaryChat 
+                      ? "bg-[#14231b] border-emerald-500/40 text-emerald-400" 
+                      : "bg-[#131314] hover:bg-[#1a1a1c] border-[#202021] text-stone-300 hover:text-white"
+                  }`}
+                  title="Modo Privado"
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <path d="M2.5 12h19M12 2A10 10 0 0 1 22 12H2A10 10 0 0 1 12 2z" fill="currentColor" fillOpacity="0.1" />
+                    <circle cx="7" cy="18" r="2.5" />
+                    <circle cx="17" cy="18" r="2.5" />
+                    <path d="M9.5 18h5" />
+                  </svg>
+                </div>
+              </div>
             </div>
 
-            {/* Language Selection Tab Switches */}
-            <div className="bg-[#121213] p-0.5 rounded-lg border border-[#1e1e20] flex items-center text-[10px] overflow-x-auto scrollbar-none max-w-full whitespace-nowrap">
+            {/* Language Selection Tab Switches - Centered nicely */}
+            <div className="bg-[#121213] p-0.5 rounded-lg border border-[#1e1e20] flex items-center text-[10px] overflow-x-auto scrollbar-none max-w-full whitespace-nowrap w-full sm:w-auto justify-center">
               <button
                 onClick={() => handleTabChange("chat")}
-                className={`px-2.5 py-1 rounded font-medium transition shrink-0 ${activeTab === "chat" ? "bg-[#1f1f22] text-[#fff]" : "text-stone-400 hover:text-white"}`}
+                className={`px-3 py-1.5 sm:py-1 rounded font-medium transition shrink-0 ${activeTab === "chat" ? "bg-[#1f1f22] text-[#fff]" : "text-stone-400 hover:text-white"}`}
               >
                 {t[lang].tabChat}
               </button>
               <button
                 onClick={() => handleTabChange("audit")}
-                className={`px-2.5 py-1 rounded font-medium transition shrink-0 ${activeTab === "audit" ? "bg-[#1f1f22] text-[#fff]" : "text-stone-400 hover:text-white"}`}
+                className={`px-3 py-1.5 sm:py-1 rounded font-medium transition shrink-0 ${activeTab === "audit" ? "bg-[#1f1f22] text-[#fff]" : "text-stone-400 hover:text-white"}`}
               >
                 {t[lang].tabAudit}
               </button>
               <button
                 onClick={() => handleTabChange("pentest")}
-                className={`px-2.5 py-1 rounded font-medium transition shrink-0 ${activeTab === "pentest" ? "bg-[#1f1f22] text-[#fff]" : "text-stone-400 hover:text-white"}`}
+                className={`px-3 py-1.5 sm:py-1 rounded font-medium transition shrink-0 ${activeTab === "pentest" ? "bg-[#1f1f22] text-[#fff]" : "text-stone-400 hover:text-white"}`}
               >
                 {t[lang].tabPentest}
               </button>
               <button
                 onClick={() => handleTabChange("news")}
-                className={`px-2.5 py-1 rounded font-medium transition shrink-0 ${activeTab === "news" ? "bg-[#1f1f22] text-[#fff]" : "text-stone-400 hover:text-white"}`}
+                className={`px-3 py-1.5 sm:py-1 rounded font-medium transition shrink-0 ${activeTab === "news" ? "bg-[#1f1f22] text-[#fff]" : "text-stone-400 hover:text-white"}`}
               >
                 {t[lang].tabNews}
               </button>
             </div>
           </div>
 
-          {/* Right Header Navigation buttons */}
-          <div className="flex items-center gap-3">
+          {/* Right Header Navigation buttons - Desktop/Large screens only */}
+          <div className="hidden md:flex items-center gap-3">
             {/* Advanced Voice Mode Activation Link */}
             <button
               onClick={() => toggleVoiceModeOverlay(true)}
@@ -2056,11 +2088,11 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
               title="Iniciar Canal de Voz Avançado"
             >
               <Headphones className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Conexão de Voz IA</span>
+              <span>Conexão de Voz IA</span>
             </button>
 
             {/* Indicação de Modo Seguro */}
-            <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-mono border border-emerald-500/10 text-emerald-400/80 bg-[#14231b]/30">
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-mono border border-emerald-500/10 text-emerald-400/80 bg-[#14231b]/30">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
               <span>Auditoria Ativa</span>
             </div>
@@ -2068,8 +2100,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
             {/* Golden Ultra account status badge */}
             <div className="flex items-center gap-1.5 text-[10px] font-extrabold text-amber-400 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 shadow-sm leading-none select-none">
               <Sparkles className="h-3 w-3 text-amber-400 shrink-0" />
-              <span className="hidden sm:inline">ULTRA / ILIMITADO</span>
-              <span className="sm:hidden">ULTRA</span>
+              <span>ULTRA / ILIMITADO</span>
             </div>
 
             {/* Incognito stealth icon matching top right of Screen 4 */}
@@ -2085,7 +2116,6 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
               {/* Steathy Custom Incognito vector shapes: Hat and Glasses */}
               <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M2.5 12h19M12 2A10 10 0 0 1 22 12H2A10 10 0 0 1 12 2z" fill="currentColor" fillOpacity="0.1" />
-                <path d="M12 2l4 10H8l4-10z" className="opacity-0" />
                 <circle cx="7" cy="18" r="2.5" />
                 <circle cx="17" cy="18" r="2.5" />
                 <path d="M9.5 18h5" />
@@ -2225,8 +2255,8 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                     />
 
                     {/* Footer interface toolbar within input box */}
-                    <div className="flex justify-between items-center pt-2.5 border-t border-[#232326]/60">
-                      <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap justify-between items-center gap-2 pt-2.5 border-t border-[#232326]/60">
+                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                         {/* File Clip Button */}
                         <button
                           onClick={() => fileInputRef.current?.click()}
