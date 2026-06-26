@@ -23,7 +23,7 @@ if (apiKey) {
 }
 
 // Multi-provider OpenAI-compatible and Gemini fallback logic
-const MANUS_API_KEY = process.env.MANUS_API_KEY || "sk-qdQ2TpE3xIbzOdeuVmyiVsr-ibweSFuxTc0GEVIHPlBrk6YwKX3HsPOeKOsOzmbItW20UjtahMHojxkA-cRMK_M3zECC";
+const MANUS_API_KEY = process.env.MANUS_API_KEY || "";
 
 async function generateWithManus(params: {
   messages: Array<{ role: string; content: string }>;
@@ -161,10 +161,13 @@ async function generateContentWithFallback(params: {
 
   // List of fallback models to ensure continuous security analysis even during usage spikes
   const modelsToTry = params.models || [
+    "gemini-2.5-flash",
+    "gemini-1.5-flash",
+    "gemini-2.5-pro",
+    "gemini-1.5-pro",
     "gemini-3.5-flash",
     "gemini-3.1-flash-lite",
-    "gemini-flash-latest",
-    "gemini-3.1-pro-preview"
+    "gemini-flash-latest"
   ];
   let lastError: any = null;
 
