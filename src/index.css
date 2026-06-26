@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+/* Ocultar barra de rolagem principal na página inteira se não houver necessidade extrema */
+html::-webkit-scrollbar, 
+body::-webkit-scrollbar {
+  display: none !important;
+}
+
+html, body {
+  -ms-overflow-style: none !important;  /* IE and Edge */
+  scrollbar-width: none !important;  /* Firefox */
+  max-width: 100%;
+  overflow-x: hidden !important; 
+  overflow-y: auto;   
+}
+
+/* 
+ * Gemini-style custom elegant scrollbars for ALL elements/divs
+ */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+  background-color: transparent;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.15);
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 0.2s ease-in-out;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+/* Firefox compatibility */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+/* Garante o box-sizing e largura do container principal */
+#root, .seu-container-principal {
+  width: 100%;
+  box-sizing: border-box; 
+}
