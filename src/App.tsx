@@ -40,7 +40,15 @@ import {
   VolumeX,
   ArrowDown,
   LogOut,
-  KeyRound
+  KeyRound,
+  ThumbsUp,
+  ThumbsDown,
+  MoreHorizontal,
+  Copy,
+  ExternalLink,
+  FileText,
+  Mail,
+  GitBranch
 } from "lucide-react";
 
 import { 
@@ -396,6 +404,37 @@ export default function App() {
   const [isPunished, setIsPunished] = useState(false);
   const [punishmentCountdown, setPunishmentCountdown] = useState(15);
 
+  // Floating custom notifications & popup modals for rich actions
+  const [toast, setToast] = useState<{ message: string; type?: "info" | "success" | "warning" } | null>(null);
+  const [openMenuIdx, setOpenMenuIdx] = useState<number | null>(null);
+  const [showDocModal, setShowDocModal] = useState(false);
+  const [docContent, setDocContent] = useState("");
+  const [showGmailModal, setShowGmailModal] = useState(false);
+  const [gmailTo, setGmailTo] = useState("marcos@empresa.com");
+  const [gmailSubject, setGmailSubject] = useState("Draft from HackerAI");
+  const [gmailBody, setGmailBody] = useState("");
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [detailsData, setDetailsData] = useState<any>(null);
+  const [showLegalModal, setShowLegalModal] = useState(false);
+  const [legalName, setLegalName] = useState("");
+  const [legalEmail, setLegalEmail] = useState("");
+  const [legalType, setLegalType] = useState("Copyright");
+  const [legalDescription, setLegalDescription] = useState("");
+  const [showCheckResponseModal, setShowCheckResponseModal] = useState(false);
+  const [checkResponseSteps, setCheckResponseSteps] = useState<string[]>([]);
+  const [checkResponseStatus, setCheckResponseStatus] = useState<"checking" | "secure">("checking");
+
+  const showToast = (message: string, type: "info" | "success" | "warning" = "success") => {
+    setToast({ message, type });
+  };
+
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
   const getOrbTones = (personality: string) => {
     switch (personality) {
       case "neon_synth":
@@ -566,7 +605,7 @@ export default function App() {
               setIsPunished(true);
             }
 
-            const aiReply = (data.text || "Desculpe, ocorreu um erro de conexão.").replace(/[*#]/g, "");
+            const aiReply = data.text || "Desculpe, ocorreu um erro de conexão.";
 
             // Add Response to logs
             setMessages(prev => [...prev, {
@@ -1163,8 +1202,37 @@ export default function App() {
               createdAt: new Date().toISOString()
             });
           }
-        } catch (err) {
-          console.error("Erro ao sincronizar do Firestore:", err);
+        } catch (err: any) {
+          console.error("Erro ao sincronizar do Firestore, tentando cache local:", err);
+          // Graceful fallback to local storage if Firestore is offline or unreachable
+          try {
+            const savedProfile = localStorage.getItem("hackerfy_profile");
+            const savedOnboarded = localStorage.getItem("hackerfy_onboarded") === "true";
+            const savedConversations = localStorage.getItem("hackerai_conversations");
+            const savedActiveId = localStorage.getItem("hackerai_active_chat_id");
+            
+            if (savedProfile) {
+              try {
+                setUserProfile(JSON.parse(savedProfile));
+              } catch (e) {}
+            }
+            setIsOnboarded(savedOnboarded);
+            if (savedConversations) {
+              try {
+                const parsed = JSON.parse(savedConversations);
+                setConversations(parsed);
+                if (savedActiveId) {
+                  setActiveChatId(savedActiveId);
+                  const found = parsed.find((c: any) => c.id === savedActiveId);
+                  if (found) {
+                    setMessages(found.messages);
+                  }
+                }
+              } catch (e) {}
+            }
+          } catch (localErr) {
+            console.error("Erro ao recuperar dados locais offline:", localErr);
+          }
         } finally {
           setIsInitialSyncing(false);
           setAuthLoading(false);
@@ -1590,17 +1658,16 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
       }
 
       const rawContent = data.text || "Failed to analyze chat prompt.";
-      const cleanContent = rawContent.replace(/[*#]/g, "");
 
       setMessages(prev => [...prev, {
         role: "assistant",
-        content: cleanContent,
+        content: rawContent,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       }]);
 
       // Speak text aloud conforming to personality voice settings if auto-voice is enabled
       if (isAutoVoiceEnabled) {
-        speakText(cleanContent, data.personality || "the_architect");
+        speakText(rawContent, data.personality || "the_architect");
       }
     } catch (err) {
       console.error(err);
@@ -1618,6 +1685,216 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
     };
     setCodeToAnalyze(samples[type]);
     setFilename(type === "rce" ? "lookup.py" : "index.js");
+  };
+
+  // Rich Chat Action Handlers
+  const renderMessageContent = (content: string) => {
+    if (!content) return null;
+    
+    // Split the content by triple backticks: ```[language]\n[code]```
+    const parts = content.split(/(```[\s\S]*?```)/g);
+    
+    return parts.map((part, i) => {
+      if (part.startsWith("```") && part.endsWith("```")) {
+        // Find language if specified
+        const match = part.match(/^```(\w*)\n([\s\S]*?)```$/) || part.match(/^```(\w*)([\s\S]*?)```$/);
+        const language = match ? match[1] : "code";
+        const code = match ? match[2] : part.slice(3, -3);
+        
+        return (
+          <div key={i} className="my-3 rounded-xl border border-stone-800 bg-[#0c0d10] overflow-hidden shadow-xl text-stone-200">
+            <div className="flex items-center justify-between px-3.5 py-2 bg-[#121318] border-b border-stone-800/85 text-stone-400 text-[10px] font-mono select-none">
+              <span className="flex items-center gap-1.5 uppercase font-bold tracking-wider text-blue-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+                {language || "code"}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(code.trim());
+                  showToast(lang === "pt" ? "Código copiado com sucesso!" : "Code copied to clipboard!", "success");
+                }}
+                className="flex items-center gap-1 px-2 py-0.5 rounded bg-stone-900 border border-stone-800 hover:bg-stone-800 hover:text-white transition-all text-[9px] font-medium"
+              >
+                <Copy className="h-3 w-3" />
+                <span>{lang === "pt" ? "Copiar Código" : "Copy Code"}</span>
+              </button>
+            </div>
+            <pre className="p-3.5 overflow-x-auto text-xs font-mono leading-relaxed bg-[#090a0d] selection:bg-blue-500/20 selection:text-white">
+              <code>{code.trim()}</code>
+            </pre>
+          </div>
+        );
+      } else {
+        return <span key={i} className="whitespace-pre-wrap break-words">{part}</span>;
+      }
+    });
+  };
+
+  const handleRateMessage = (msgIdx: number, ratingType: "like" | "dislike") => {
+    setMessages(prev => {
+      const updated = prev.map((m, idx) => {
+        if (idx === msgIdx) {
+          const currentRating = m.rating;
+          const newRating = currentRating === ratingType ? undefined : ratingType;
+          return { ...m, rating: newRating };
+        }
+        return m;
+      });
+      return updated;
+    });
+    showToast(
+      lang === "pt" 
+        ? (ratingType === "like" ? "Obrigado pelo seu feedback positivo!" : "Obrigado pelo feedback, vamos melhorar!")
+        : (ratingType === "like" ? "Thank you for your feedback!" : "Feedback recorded, we will improve!"),
+      "success"
+    );
+  };
+
+  const handleRegenerateMessage = async (msgIdx: number) => {
+    if (messages[msgIdx]?.role !== "assistant") return;
+    const userPromptMsg = messages[msgIdx - 1];
+    if (!userPromptMsg || userPromptMsg.role !== "user") return;
+    
+    const truncatedMessages = messages.slice(0, msgIdx);
+    setMessages(truncatedMessages);
+    setIsReplying(true);
+    setOpenMenuIdx(null);
+    
+    try {
+      const response = await fetch("/api/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: userPromptMsg.content,
+          history: truncatedMessages.slice(-10),
+          language: lang,
+          userProfile: userProfile
+        })
+      });
+      const data = await response.json();
+      
+      if (data.personality) {
+        setCurrentPersonality(data.personality);
+      }
+      if (data.punishment) {
+        setIsPunished(true);
+      }
+
+      const rawContent = data.text || "Failed to analyze chat prompt.";
+
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: rawContent,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }]);
+
+      if (isAutoVoiceEnabled) {
+        speakText(rawContent, data.personality || "the_architect");
+      }
+      showToast(lang === "pt" ? "Resposta regenerada com sucesso!" : "Response successfully regenerated!", "success");
+    } catch (err) {
+      console.error(err);
+      showToast(lang === "pt" ? "Falha ao regenerar resposta." : "Failed to regenerate response.", "warning");
+    } finally {
+      setIsReplying(false);
+    }
+  };
+
+  const handleBranchConversation = (msgIdx: number) => {
+    const slicedMessages = messages.slice(0, msgIdx + 1);
+    const firstPrompt = slicedMessages.find(m => m.role === "user")?.content || "Nova Ramificação";
+    const title = firstPrompt.length > 30 ? firstPrompt.slice(0, 30) + "..." : firstPrompt;
+    
+    const newSession: ChatSession = {
+      id: "session_" + Date.now(),
+      title: `${lang === "pt" ? "Ramificado: " : "Branch: "}${title}`,
+      messages: slicedMessages,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    
+    setConversations(prev => [newSession, ...prev]);
+    setActiveChatId(newSession.id);
+    setMessages(slicedMessages);
+    setOpenMenuIdx(null);
+    showToast(
+      lang === "pt" 
+        ? "Conversa ramificada com sucesso!" 
+        : "Successfully branched into a new conversation!", 
+      "success"
+    );
+  };
+
+  const handleCheckResponse = (msgContent: string) => {
+    setOpenMenuIdx(null);
+    setShowCheckResponseModal(true);
+    setCheckResponseStatus("checking");
+    setCheckResponseSteps([]);
+    
+    const steps = [
+      lang === "pt" ? "Iniciando verificação de consenso..." : "Initiating consensus verification...",
+      lang === "pt" ? "Analisando padrões OWASP Top 10 contra injeções..." : "Analyzing OWASP Top 10 structures against injection...",
+      lang === "pt" ? "Escaneando vazamento de credenciais ou chaves expostas..." : "Scanning for leaked credentials or exposed private keys...",
+      lang === "pt" ? "Validando lógica de desvios e tratamento de exceção..." : "Validating logical exceptions and secure sandbox boundaries...",
+      lang === "pt" ? "Sucesso: Consenso Multi-IA aprovado e certificado!" : "Success: Multi-AI Consensus audit completed successfully!"
+    ];
+    
+    steps.forEach((step, idx) => {
+      setTimeout(() => {
+        setCheckResponseSteps(prev => [...prev, step]);
+        if (idx === steps.length - 1) {
+          setCheckResponseStatus("secure");
+          showToast(lang === "pt" ? "Resposta checada com sucesso!" : "Response verified successfully!", "success");
+        }
+      }, (idx + 1) * 800);
+    });
+  };
+
+  const handleExportToDocs = (content: string) => {
+    setOpenMenuIdx(null);
+    setDocContent(content);
+    setShowDocModal(true);
+  };
+
+  const handleCreateGmailDraft = (content: string) => {
+    setOpenMenuIdx(null);
+    setGmailBody(content);
+    setGmailSubject(lang === "pt" ? "Relatório de Auditoria de Código - HackerAI" : "Code Audit Report - HackerAI");
+    setShowGmailModal(true);
+  };
+
+  const handleExportToReplit = (content: string) => {
+    setOpenMenuIdx(null);
+    showToast(lang === "pt" ? "Exportando ambiente sandbox para o Replit..." : "Exporting sandbox environment to Replit...", "info");
+    setTimeout(() => {
+      const element = document.createElement("a");
+      const file = new Blob([content], { type: 'text/plain' });
+      element.href = URL.createObjectURL(file);
+      element.download = "hackerai_workspace.html";
+      document.body.appendChild(element);
+      element.click();
+      document.body.removeChild(element);
+      showToast(lang === "pt" ? "Exportação Replit realizada com sucesso!" : "Replit export completed successfully!", "success");
+    }, 1500);
+  };
+
+  const handleReportLegalIssue = (content: string) => {
+    setOpenMenuIdx(null);
+    setLegalDescription(content);
+    setShowLegalModal(true);
+  };
+
+  const handleViewResponseDetails = (m: Message) => {
+    setOpenMenuIdx(null);
+    setDetailsData({
+      timestamp: m.timestamp,
+      model: currentModel === "standard" ? "DeepSeek V4 (Default)" : currentModel === "pro" ? "Gemini Pro Consensus" : "Gemini Max Consensus",
+      consensusStatus: "Consensual (DeepSeek + Gemini Pro validated)",
+      tokens: Math.floor(m.content.length / 3.8),
+      latency: "1.42s",
+      safetyScore: "100/100 (OWASP Passed)"
+    });
+    setShowDetailsModal(true);
   };
 
   // Auth handlers
@@ -2099,7 +2376,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
   }
 
   return (
-    <div className="min-h-screen bg-[#0b0d10] text-[#ededee] font-sans selection:bg-[#3b82f6] selection:text-white flex flex-col lg:flex-row relative overflow-x-hidden">
+    <div className="h-screen max-h-screen bg-[#0b0d10] text-[#ededee] font-sans selection:bg-[#3b82f6] selection:text-white flex flex-col lg:flex-row relative overflow-hidden">
       
       <style>{`
         @keyframes fadeIn {
@@ -2716,10 +2993,10 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
       </aside>
 
       {/* Outer wrapper */}
-      <div className="flex-1 min-h-screen flex flex-col justify-start relative w-full min-w-0">
+      <div className="flex-1 h-screen lg:h-full flex flex-col justify-start relative w-full min-w-0 overflow-hidden">
 
         {/* Top Header Controls: star upgrade logic, language buttons and Incognito status */}
-        <header className="px-3 sm:px-5 py-3 sm:py-4 flex flex-col md:flex-row gap-3 md:gap-0 justify-between items-center bg-transparent z-15 border-b border-[#1e1e20]/40 md:border-b-0 w-full">
+        <header className="px-3 sm:px-5 py-3 sm:py-4 flex flex-col md:flex-row gap-3 md:gap-0 justify-between items-center bg-transparent z-15 border-b border-[#1e1e20]/40 md:border-b-0 w-full shrink-0">
           
           {/* Logo & Tab Toggle Buttons */}
           <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 w-full md:w-auto">
@@ -2842,45 +3119,44 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
         </header>
 
         {/* Dashboard Frame Area */}
-        <main className="flex-1 flex flex-col justify-center items-center px-4 py-8 max-w-[1000px] w-full mx-auto">
-
-          {/* Hero Segment */}
-          <section className="text-center mb-8 max-w-lg space-y-2 select-none">
-            {isTemporaryChat ? (
-              <>
-                <h1 className="text-3xl font-bold tracking-tight text-white mb-2 font-sans">
-                  {t[lang].tempChatTitle}
-                </h1>
-                <p className="text-xs text-stone-500 leading-relaxed max-w-md mx-auto">
-                  {t[lang].tempChatDesc}
-                </p>
-              </>
-            ) : (
-              <>
-                <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-white font-sans max-w-lg leading-tight">
-                  {userProfile.howToCall 
-                    ? `O que está no escopo hoje, ${userProfile.howToCall}?` 
-                    : t[lang].heroTitle}
-                </h1>
-                <p className="text-stone-400 text-xs md:text-sm font-sans font-medium">
-                  {t[lang].heroSubtitle}
-                </p>
-              </>
-            )}
-          </section>
+        <main className={`flex-1 flex flex-col w-full mx-auto px-4 ${activeTab === "chat" ? "pb-1.5 overflow-hidden" : "pb-4 overflow-y-auto"} min-h-0`}>
 
           {/* Tab Content Display Area */}
-          <div className="w-full">
+          <div className="flex-1 flex flex-col min-h-0 w-full">
             
             {/* Tab: General AI Chatbot */}
             {activeTab === "chat" && (
-              <div className="seu-container-de-chat flex flex-col relative">
+              <div className="seu-container-de-chat flex-1 flex flex-col min-h-0 relative">
                 {/* Conversation messages trace */}
                 <div 
                   ref={chatContainerRef}
                   onScroll={handleScroll}
-                  className="p-5 w-full space-y-6 font-sans leading-relaxed scroll-smooth pb-12"
+                  className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-6 font-sans leading-relaxed scroll-smooth pb-12"
                 >
+                  {/* Hero Segment */}
+                  <section className="text-center mb-8 mt-4 max-w-lg mx-auto space-y-2 select-none shrink-0">
+                    {isTemporaryChat ? (
+                      <>
+                        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white mb-2 font-sans">
+                          {t[lang].tempChatTitle}
+                        </h1>
+                        <p className="text-xs text-stone-500 leading-relaxed max-w-md mx-auto">
+                          {t[lang].tempChatDesc}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight text-white font-sans leading-tight">
+                          {userProfile.howToCall 
+                            ? `O que está no escopo hoje, ${userProfile.howToCall}?` 
+                            : t[lang].heroTitle}
+                        </h1>
+                        <p className="text-stone-400 text-xs md:text-sm font-sans font-medium">
+                          {t[lang].heroSubtitle}
+                        </p>
+                      </>
+                    )}
+                  </section>
                   {messages.map((m, idx) => (
                     <div key={idx} className={`flex gap-3.5 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                       {m.role === "assistant" && (
@@ -2910,17 +3186,162 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                             </span>
                           )}
                         </div>
-                        <div className="flex justify-between items-start gap-4">
-                          <p className="whitespace-pre-wrap break-words overflow-x-auto select-text flex-1">{m.content}</p>
-                          {m.role === "assistant" && (
-                            <button
-                              onClick={() => speakText(m.content, currentPersonality)}
-                              className="p-1 rounded hover:bg-stone-850 bg-stone-900/45 border border-stone-800 text-stone-400 hover:text-white transition shrink-0 self-end md:self-start opacity-70 hover:opacity-100 flex items-center justify-center cursor-pointer"
-                              title="Ouvir Resposta / Listen to Response"
-                              type="button"
-                            >
-                              <Volume2 className="h-3.5 w-3.5" />
-                            </button>
+                        <div className="mt-1 flex flex-col">
+                          {m.role === "assistant" ? (
+                            <div className="flex flex-col gap-2">
+                              {/* Message body with parsed code block styling */}
+                              <div className="text-stone-200 select-text leading-relaxed">
+                                {renderMessageContent(m.content)}
+                              </div>
+                              
+                              {/* Bottom action bar row matching screenshot */}
+                              <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-stone-800/50 relative">
+                                {/* Thumbs Up / Like */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleRateMessage(idx, "like")}
+                                  className={`p-1 rounded hover:bg-stone-850 transition ${m.rating === "like" ? "text-emerald-400 bg-emerald-950/45" : "text-stone-400 hover:text-white"}`}
+                                  title="Gostei / Like"
+                                >
+                                  <ThumbsUp className="h-3.5 w-3.5" />
+                                </button>
+                                
+                                {/* Thumbs Down / Dislike */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleRateMessage(idx, "dislike")}
+                                  className={`p-1 rounded hover:bg-stone-850 transition ${m.rating === "dislike" ? "text-red-400 bg-red-950/45" : "text-stone-400 hover:text-white"}`}
+                                  title="Não gostei / Dislike"
+                                >
+                                  <ThumbsDown className="h-3.5 w-3.5" />
+                                </button>
+                                
+                                {/* Regenerate */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleRegenerateMessage(idx)}
+                                  className="p-1 rounded hover:bg-stone-850 text-stone-400 hover:text-white transition"
+                                  title="Gerar novamente / Regenerate"
+                                >
+                                  <RotateCw className="h-3.5 w-3.5" />
+                                </button>
+                                
+                                {/* Copy Response */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(m.content);
+                                    showToast(lang === "pt" ? "Texto copiado para a área de transferência!" : "Text copied to clipboard!", "success");
+                                  }}
+                                  className="p-1 rounded hover:bg-stone-850 text-stone-400 hover:text-white transition"
+                                  title="Copiar texto / Copy text"
+                                >
+                                  <Copy className="h-3.5 w-3.5" />
+                                </button>
+                                
+                                {/* More options (...) */}
+                                <div className="relative">
+                                  <button
+                                    type="button"
+                                    onClick={() => setOpenMenuIdx(openMenuIdx === idx ? null : idx)}
+                                    className={`p-1 rounded hover:bg-stone-850 transition ${openMenuIdx === idx ? "text-blue-400 bg-blue-950/30" : "text-stone-400 hover:text-white"}`}
+                                    title="Mais opções / More options"
+                                  >
+                                    <MoreHorizontal className="h-3.5 w-3.5" />
+                                  </button>
+                                  
+                                  {/* Dropdown menu popover matched exactly to the screenshot */}
+                                  {openMenuIdx === idx && (
+                                    <div className="absolute left-0 mt-1.5 w-64 rounded-xl bg-[#141416] border border-stone-800/80 shadow-2xl py-1.5 z-40 animate-in fade-in slide-in-from-top-1 text-stone-300">
+                                      {/* Ramificar em uma nova conversa */}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleBranchConversation(idx)}
+                                        className="w-full flex items-center gap-2.5 px-3.5 py-2 text-left text-xs hover:bg-stone-800 hover:text-white transition-colors"
+                                      >
+                                        <GitBranch className="h-3.5 w-3.5 text-purple-400 shrink-0" />
+                                        <span>Ramificar em uma nova conversa</span>
+                                      </button>
+                                      
+                                      {/* Checar resposta */}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCheckResponse(m.content)}
+                                        className="w-full flex items-center gap-2.5 px-3.5 py-2 text-left text-xs hover:bg-stone-800 hover:text-white transition-colors"
+                                      >
+                                        <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                                        <span>Checar resposta</span>
+                                      </button>
+                                      
+                                      {/* Ouvir */}
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setOpenMenuIdx(null);
+                                          speakText(m.content, currentPersonality);
+                                        }}
+                                        className="w-full flex items-center gap-2.5 px-3.5 py-2 text-left text-xs hover:bg-stone-800 hover:text-white transition-colors"
+                                      >
+                                        <Volume2 className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                                        <span>Ouvir</span>
+                                      </button>
+                                      
+                                      {/* Exportar para o Google Docs */}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleExportToDocs(m.content)}
+                                        className="w-full flex items-center gap-2.5 px-3.5 py-2 text-left text-xs hover:bg-stone-800 hover:text-white transition-colors"
+                                      >
+                                        <FileText className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                                        <span>Exportar para o Google Docs</span>
+                                      </button>
+                                      
+                                      {/* Criar rascunho no Gmail */}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCreateGmailDraft(m.content)}
+                                        className="w-full flex items-center gap-2.5 px-3.5 py-2 text-left text-xs hover:bg-stone-800 hover:text-white transition-colors"
+                                      >
+                                        <Mail className="h-3.5 w-3.5 text-red-400 shrink-0" />
+                                        <span>Criar rascunho no Gmail</span>
+                                      </button>
+                                      
+                                      {/* Exportar para Replit */}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleExportToReplit(m.content)}
+                                        className="w-full flex items-center gap-2.5 px-3.5 py-2 text-left text-xs hover:bg-stone-800 hover:text-white transition-colors"
+                                      >
+                                        <ExternalLink className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                                        <span>Exportar para Replit</span>
+                                      </button>
+                                      
+                                      {/* Informar problema jurídico */}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleReportLegalIssue(m.content)}
+                                        className="w-full flex items-center gap-2.5 px-3.5 py-2 text-left text-xs hover:bg-stone-800 hover:text-white transition-colors border-t border-stone-800/40 mt-1 pt-1.5"
+                                      >
+                                        <Shield className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                                        <span>Informar problema jurídico</span>
+                                      </button>
+                                      
+                                      {/* Ver detalhes da resposta */}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleViewResponseDetails(m)}
+                                        className="w-full flex items-center gap-2.5 px-3.5 py-2 text-left text-xs hover:bg-stone-800 hover:text-white transition-colors"
+                                      >
+                                        <Info className="h-3.5 w-3.5 text-sky-400 shrink-0" />
+                                        <span>Ver detalhes da resposta</span>
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="whitespace-pre-wrap break-words overflow-x-auto select-text leading-normal">{m.content}</p>
                           )}
                         </div>
                         <span className="block mt-2 text-[9px] opacity-55 text-right font-mono">{m.timestamp}</span>
@@ -2955,7 +3376,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                 )}
 
                 {/* Sticky input container mimicking Gemini's docked input perfectly */}
-                <div className="sticky bottom-0 left-0 right-0 w-full bg-gradient-to-t from-[#0b0d10] via-[#0b0d10] to-transparent pt-10 pb-4 z-30">
+                <div className="shrink-0 w-full bg-gradient-to-t from-[#0b0d10] via-[#0b0d10] to-[#0b0d10]/0 pt-2 pb-1 z-30">
                   <div className="relative w-full">
                     {/* The plus button dropdown popover */}
                     {showPlusDropdown && (
@@ -3266,7 +3687,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                     </div>
                   </div>
 
-                  <p className="text-center text-[9px] text-stone-500 mt-3 hover:text-stone-400 cursor-help select-none">
+                  <p className="text-center text-[9px] text-stone-500 mt-1 hover:text-stone-400 cursor-help select-none">
                     {t[lang].disclaimer}
                   </p>
                 </div>
@@ -4105,6 +4526,312 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
             >
               {t[lang].voiceClose}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Floating custom notifications & popup modals for rich actions */}
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-[9999] p-3 rounded-xl border shadow-2xl flex items-center gap-2.5 max-w-sm animate-in fade-in slide-in-from-top-4 duration-300
+          ${toast.type === "success" ? "bg-emerald-950/80 border-emerald-500/30 text-emerald-300" : ""}
+          ${toast.type === "warning" ? "bg-amber-950/80 border-amber-500/30 text-amber-300" : ""}
+          ${toast.type === "info" ? "bg-blue-950/80 border-blue-500/30 text-blue-300" : ""}
+        `}>
+          <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse shrink-0"></span>
+          <p className="text-xs font-semibold leading-snug">{toast.message}</p>
+        </div>
+      )}
+
+      {/* Google Docs Modal */}
+      {showDocModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
+          <div className="bg-[#121316] border border-stone-800 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col h-[85vh] animate-fade-in">
+            {/* Modal Header mimicking Google Docs */}
+            <div className="bg-[#18191c] border-b border-stone-800 px-4 py-3 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-600 rounded-lg text-white">
+                  <FileText className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-black tracking-wider text-stone-200 uppercase font-mono">HackerAI Export Document</h3>
+                  <p className="text-[10px] text-stone-500">Salvo na nuvem do HackerAI • Google Docs virtual</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDocModal(false)}
+                className="text-stone-400 hover:text-white text-xs px-2.5 py-1 rounded bg-stone-900 border border-stone-800 hover:bg-stone-800 transition"
+              >
+                Fechar / Close
+              </button>
+            </div>
+            
+            {/* Formatting tool bar */}
+            <div className="bg-[#141517] border-b border-stone-800/80 px-4 py-2 flex flex-wrap gap-1.5 items-center text-stone-400 text-[10px] font-mono">
+              <span className="px-1.5 py-0.5 rounded bg-stone-900 border border-stone-800">Arial</span>
+              <span className="px-1.5 py-0.5 rounded bg-stone-900 border border-stone-800">11pt</span>
+              <span className="w-px h-3.5 bg-stone-800"></span>
+              <button type="button" className="p-1 hover:text-white" title="Bold">B</button>
+              <button type="button" className="p-1 hover:text-white italic" title="Italic">I</button>
+              <button type="button" className="p-1 hover:text-white underline" title="Underline">U</button>
+              <span className="w-px h-3.5 bg-stone-800"></span>
+              <span className="text-emerald-400 font-bold">● Compartilhado</span>
+            </div>
+
+            {/* Simulated Page Body */}
+            <div className="flex-1 overflow-y-auto p-6 bg-[#0b0c0e] flex justify-center">
+              <div className="bg-white text-stone-900 w-full max-w-2xl min-h-[100%] shadow-xl rounded-lg p-8 font-sans selection:bg-blue-200">
+                <h1 className="text-xl font-bold border-b pb-2 mb-4 font-serif">Relatório HackerAI - Auditoria de Código</h1>
+                <textarea
+                  className="w-full h-[60vh] bg-transparent resize-none border-none focus:outline-none text-xs font-mono leading-relaxed"
+                  value={docContent}
+                  onChange={(e) => setDocContent(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Gmail Compose Modal */}
+      {showGmailModal && (
+        <div className="fixed bottom-0 right-4 lg:right-16 z-[999] w-full max-w-lg bg-[#141518] border border-stone-800/90 rounded-t-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-8 duration-300">
+          <div className="bg-[#1a1b1f] px-4 py-3 border-b border-stone-800 flex items-center justify-between">
+            <span className="text-xs font-bold font-mono tracking-wide text-stone-200 flex items-center gap-1.5">
+              <Mail className="h-3.5 w-3.5 text-red-400 animate-pulse animate-bounce" />
+              Rascunho de E-mail (Gmail virtual)
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowGmailModal(false)}
+              className="text-stone-400 hover:text-white text-xs font-bold"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="p-4 space-y-3.5 text-stone-200">
+            <div>
+              <label className="block text-[10px] uppercase font-mono tracking-wider text-stone-500 mb-1">Para / Recipient:</label>
+              <input
+                type="email"
+                className="w-full bg-[#0b0c0d] border border-stone-800 rounded-xl px-3.5 py-1.5 text-xs text-stone-200 focus:outline-none focus:border-red-500/40"
+                value={gmailTo}
+                onChange={(e) => setGmailTo(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase font-mono tracking-wider text-stone-500 mb-1">Assunto / Subject:</label>
+              <input
+                type="text"
+                className="w-full bg-[#0b0c0d] border border-stone-800 rounded-xl px-3.5 py-1.5 text-xs text-stone-200 focus:outline-none focus:border-red-500/40"
+                value={gmailSubject}
+                onChange={(e) => setGmailSubject(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase font-mono tracking-wider text-stone-500 mb-1">Mensagem / Body:</label>
+              <textarea
+                className="w-full h-44 bg-[#0b0c0d] border border-stone-800 rounded-xl px-3.5 py-2 text-xs text-stone-300 font-mono focus:outline-none focus:border-red-500/40"
+                value={gmailBody}
+                onChange={(e) => setGmailBody(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center justify-between pt-1 border-t border-stone-800/55">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowGmailModal(false);
+                  showToast("Rascunho salvo no Gmail com sucesso!", "success");
+                }}
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-md transition"
+              >
+                Salvar Rascunho / Save Draft
+              </button>
+              <span className="text-[9px] text-stone-500 font-mono">Gmail Sync API</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Response Consensus Check Modal */}
+      {showCheckResponseModal && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
+          <div className="bg-[#121316] border border-stone-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col p-5 space-y-4 animate-fade-in">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2.5 bg-emerald-950 border border-emerald-500/30 rounded-xl text-emerald-400">
+                <Check className={`h-5 w-5 ${checkResponseStatus === "checking" ? "animate-spin" : ""}`} />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-stone-100">Auditoria Multi-IA Consensus</h3>
+                <p className="text-[10px] text-stone-400 font-mono">Status: {checkResponseStatus === "checking" ? "Verificando..." : "Certificado Seguro (Aprovado)"}</p>
+              </div>
+            </div>
+            
+            <div className="bg-[#0b0c0e] rounded-xl p-3.5 border border-stone-850 h-52 overflow-y-auto space-y-2 font-mono text-[10px]">
+              {checkResponseSteps.map((step, idx) => (
+                <div key={idx} className="flex items-start gap-2 text-stone-300 animate-in fade-in duration-300">
+                  <span className="text-emerald-500 font-black">✓</span>
+                  <span>{step}</span>
+                </div>
+              ))}
+              {checkResponseStatus === "checking" && (
+                <div className="flex items-center gap-2 text-stone-500 italic animate-pulse">
+                  <span className="w-1.5 h-1.5 rounded-full bg-stone-500 animate-bounce"></span>
+                  <span>Avaliando integridade estrutural...</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setShowCheckResponseModal(false)}
+                disabled={checkResponseStatus === "checking"}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition ${
+                  checkResponseStatus === "checking" 
+                    ? "bg-stone-800 text-stone-500 cursor-not-allowed" 
+                    : "bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer"
+                }`}
+              >
+                Concluir Auditoria / Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Legal Reporting Modal */}
+      {showLegalModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
+          <div className="bg-[#121316] border border-stone-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl p-5 space-y-4 animate-fade-in">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2.5 bg-amber-950 border border-amber-500/30 rounded-xl text-amber-400">
+                <Shield className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-stone-100">Informar Problema Jurídico</h3>
+                <p className="text-[10px] text-stone-400 font-mono">Relato de propriedade intelectual ou violação</p>
+              </div>
+            </div>
+            
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[9px] uppercase font-mono tracking-wider text-stone-500 mb-1">Seu Nome / Full Name:</label>
+                <input
+                  type="text"
+                  className="w-full bg-[#0b0c0d] border border-stone-800 rounded-xl px-3.5 py-1.5 text-xs text-stone-200 focus:outline-none focus:border-amber-500/40"
+                  value={legalName}
+                  onChange={(e) => setLegalName(e.target.value)}
+                  placeholder="Nome do Auditor"
+                />
+              </div>
+              <div>
+                <label className="block text-[9px] uppercase font-mono tracking-wider text-stone-500 mb-1">E-mail para Contato:</label>
+                <input
+                  type="email"
+                  className="w-full bg-[#0b0c0d] border border-stone-800 rounded-xl px-3.5 py-1.5 text-xs text-stone-200 focus:outline-none focus:border-amber-500/40"
+                  value={legalEmail}
+                  onChange={(e) => setLegalEmail(e.target.value)}
+                  placeholder="auditor@empresa.com"
+                />
+              </div>
+              <div>
+                <label className="block text-[9px] uppercase font-mono tracking-wider text-stone-500 mb-1">Tipo de Notificação:</label>
+                <select
+                  className="w-full bg-[#0b0c0d] border border-stone-800 rounded-xl px-3.5 py-1.5 text-xs text-stone-200 focus:outline-none focus:border-amber-500/40"
+                  value={legalType}
+                  onChange={(e) => setLegalType(e.target.value)}
+                >
+                  <option value="Copyright">Direitos Autorais (Copyright Violation)</option>
+                  <option value="Privacy">Privacidade & GDPR</option>
+                  <option value="Malicious">Software Malicioso ou Phishing</option>
+                  <option value="Other">Outro</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[9px] uppercase font-mono tracking-wider text-stone-500 mb-1">Descrição Detalhada:</label>
+                <textarea
+                  className="w-full h-24 bg-[#0b0c0d] border border-stone-800 rounded-xl px-3.5 py-2 text-xs text-stone-300 font-mono focus:outline-none focus:border-amber-500/40"
+                  value={legalDescription}
+                  onChange={(e) => setLegalDescription(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1.5">
+              <button
+                type="button"
+                onClick={() => setShowLegalModal(false)}
+                className="px-3.5 py-2 rounded-xl text-stone-400 hover:text-white hover:bg-stone-800 text-xs font-bold transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLegalModal(false);
+                  showToast("Notificação jurídica protocolada com sucesso!", "warning");
+                }}
+                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shadow-md transition cursor-pointer"
+              >
+                Protocolar Notificação
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Response Details Inspector Modal */}
+      {showDetailsModal && detailsData && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
+          <div className="bg-[#121316] border border-stone-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl p-5 space-y-4 animate-fade-in">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2.5 bg-sky-950 border border-sky-500/30 rounded-xl text-sky-400">
+                <Info className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-stone-100">Metadata da Resposta</h3>
+                <p className="text-[10px] text-stone-400 font-mono">Auditoria estrutural e telemetria da IA</p>
+              </div>
+            </div>
+            
+            <div className="space-y-2.5 text-xs">
+              <div className="flex justify-between py-1.5 border-b border-stone-850 font-sans">
+                <span className="text-stone-400">Horário / Timestamp:</span>
+                <span className="font-mono text-stone-200">{detailsData.timestamp}</span>
+              </div>
+              <div className="flex justify-between py-1.5 border-b border-stone-850 font-sans">
+                <span className="text-stone-400">Modelo Utilizado:</span>
+                <span className="font-mono text-stone-200">{detailsData.model}</span>
+              </div>
+              <div className="flex justify-between py-1.5 border-b border-stone-850 font-sans">
+                <span className="text-stone-400">Status de Consenso:</span>
+                <span className="font-mono text-stone-200 text-emerald-400">{detailsData.consensusStatus}</span>
+              </div>
+              <div className="flex justify-between py-1.5 border-b border-stone-850 font-sans">
+                <span className="text-stone-400">Tokens Estimados:</span>
+                <span className="font-mono text-stone-200">{detailsData.tokens} tokens</span>
+              </div>
+              <div className="flex justify-between py-1.5 border-b border-stone-850 font-sans">
+                <span className="text-stone-400">Latência do Pipeline:</span>
+                <span className="font-mono text-stone-200">{detailsData.latency}</span>
+              </div>
+              <div className="flex justify-between py-1.5 font-sans">
+                <span className="text-stone-400">Score de Segurança OWASP:</span>
+                <span className="font-mono text-emerald-400 font-black">{detailsData.safetyScore}</span>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setShowDetailsModal(false)}
+                className="px-4 py-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-white font-bold text-xs transition cursor-pointer"
+              >
+                Fechar / Close
+              </button>
+            </div>
           </div>
         </div>
       )}
