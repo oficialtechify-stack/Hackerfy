@@ -50,3 +50,20 @@ html, body {
   width: 100%;
   box-sizing: border-box; 
 }
+
+/* Localize o container que está gerando a borda e o fundo cinza e mude para isso: */
+.seu-container-de-chat {
+    background-color: transparent !important; /* Remove a cor de fundo cinza */
+    border: none !important;                 /* Remove a linha de borda ao redor */
+    box-shadow: none !important;             /* Remove qualquer sombra que dê profundidade */
+    padding: 20px 0;                         /* Mantém apenas o espaçamento interno vertical */
+    width: 100%;
+    max-width: 1000px;                       /* Mantém a largura ideal para não espalhar demais */
+    margin: 0 auto;                          /* Centraliza o fluxo das mensagens na tela */
+}
+
+/* Garanta que o fundo principal da página (body ou main) seja totalmente escuro */
+body {
+    background-color: #0b0d10 !important; /* Ou a cor preta/escura padrão que você já usa no site */
+}
+

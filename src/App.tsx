@@ -38,8 +38,25 @@ import {
   Headphones,
   Volume2,
   VolumeX,
-  ArrowDown
+  ArrowDown,
+  LogOut,
+  KeyRound
 } from "lucide-react";
+
+import { 
+  auth, 
+  db, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signOut, 
+  sendPasswordResetEmail, 
+  onAuthStateChanged,
+  doc,
+  getDoc,
+  setDoc
+} from "./firebase";
+import ShaderCanvas from "./components/ShaderCanvas";
+
 
 // Translations mapping
 const t = {
@@ -306,6 +323,22 @@ interface ChatSession {
 
 export default function App() {
   const lang = "pt" as const;
+
+  // Firebase Auth & Sync State
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [isInitialSyncing, setIsInitialSyncing] = useState<boolean>(true);
+  const [authMode, setAuthMode] = useState<"login" | "register" | "forgot">("login");
+  
+  // Auth Form State
+  const [authEmail, setAuthEmail] = useState("");
+  const [registerName, setRegisterName] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authConfirmPassword, setAuthConfirmPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authSuccessMsg, setAuthSuccessMsg] = useState("");
+  const [authPending, setAuthPending] = useState(false);
+
 
   const [isOnboarded, setIsOnboarded] = useState<boolean>(() => {
     if (typeof window !== "undefined") {
@@ -640,23 +673,57 @@ export default function App() {
     }
   };
 
-  // TTS - Speech Synthesis (Text-to-Speech) using Gemini TTS (gemini-3.1-flash-tts-preview)
+  // TTS - Speech Synthesis (Text-to-Speech) using Gemini TTS (gemini-3.1-flash-tts-preview) with native browser fallback
   const speakText = async (text: string, personality?: string) => {
-    try {
-      // Abort active readings
-      stopTTS();
+    // Clean text of technical markdown or large code structures so voice synthesising runs naturally
+    const cleanText = text
+      .replace(/```[\s\S]*?```/g, " [Código suprimido na leitura de voz] ")
+      .replace(/`([^`]+)`/g, " $1 ")
+      .replace(/[*#_\-\\/[\]()]/g, " ")
+      .trim();
 
-      // Clean text of technical markdown or large code structures so voice synthesising runs naturally
-      const cleanText = text
-        .replace(/```[\s\S]*?```/g, " [Código suprimido na leitura de voz] ")
-        .replace(/`([^`]+)`/g, " $1 ")
-        .replace(/[*#_\-\\/[\]()]/g, " ")
-        .trim();
+    if (!cleanText) {
+      setVoiceState("idle");
+      return;
+    }
 
-      if (!cleanText) {
+    const speakBrowserTTS = () => {
+      if (typeof window === "undefined" || !window.speechSynthesis) {
         setVoiceState("idle");
         return;
       }
+      try {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        utterance.lang = lang === "pt" ? "pt-BR" : "en-US";
+        
+        utterance.onstart = () => {
+          setVoiceState("speaking");
+        };
+        utterance.onend = () => {
+          setVoiceState("idle");
+          if (isVoiceModeActive && isContinuousListening && recognitionRef.current) {
+            try {
+              recognitionRef.current.start();
+            } catch (e) {
+              // Already active
+            }
+          }
+        };
+        utterance.onerror = () => {
+          setVoiceState("idle");
+        };
+        
+        window.speechSynthesis.speak(utterance);
+      } catch (err) {
+        console.error("Browser TTS fallback failed:", err);
+        setVoiceState("idle");
+      }
+    };
+
+    try {
+      // Abort active readings
+      stopTTS();
 
       setVoiceState("thinking");
 
@@ -685,7 +752,7 @@ export default function App() {
       const mimeType = data.mimeType || "audio/pcm";
       let audioUrl = "";
 
-      if (mimeType.includes("pcm")) {
+      if (mimeType && typeof mimeType === "string" && mimeType.includes("pcm")) {
         audioUrl = pcmToWav(data.audio, 24000);
       } else {
         const binaryString = window.atob(data.audio);
@@ -694,7 +761,14 @@ export default function App() {
         for (let i = 0; i < len; i++) {
           bytes[i] = binaryString.charCodeAt(i);
         }
-        const blob = new Blob([bytes], { type: mimeType });
+        
+        // Rewrite audio/x-aac to audio/aac to improve browser compatibility
+        let playMimeType = mimeType;
+        if (playMimeType === "audio/x-aac") {
+          playMimeType = "audio/aac";
+        }
+        
+        const blob = new Blob([bytes], { type: playMimeType });
         audioUrl = URL.createObjectURL(blob);
       }
 
@@ -722,14 +796,14 @@ export default function App() {
       };
 
       audio.onerror = (event) => {
-        console.warn("Audio playback error:", event);
-        setVoiceState("idle");
+        console.warn("Audio playback error, falling back to Browser TTS:", event);
+        speakBrowserTTS();
       };
 
       await audio.play();
     } catch (e) {
-      console.error("Text-to-Speech error:", e);
-      setVoiceState("idle");
+      console.warn("Gemini TTS error, falling back to Browser TTS:", e);
+      speakBrowserTTS();
     }
   };
 
@@ -882,12 +956,18 @@ export default function App() {
       };
 
       rec.onerror = (event: any) => {
-        console.error("STT Speech Recognition error:", event.error);
+        console.warn("STT Speech Recognition error, switching to MediaRecorder fallback:", event.error);
         if (event.error === "aborted") return; // ignore intentional speech stops
 
-        if (event.error === "not-allowed") {
-          alert(lang === "pt" ? "Permissão de microfone negada ou bloqueada no preview." : "Microphone permission denied or blocked in the preview frame.");
-        }
+        // Chrome blocks webkitSpeechRecognition inside cross-origin iframes.
+        // Fallback immediately to standard getUserMedia and MediaRecorder, which works perfectly.
+        rec.onend = null;
+        rec.onerror = null;
+        try {
+          rec.abort();
+        } catch (e) {}
+
+        runMediaRecorderSTTFallback();
       };
 
       rec.onend = () => {
@@ -933,6 +1013,7 @@ export default function App() {
   // Dropdowns
   const [showAskDropdown, setShowAskDropdown] = useState(false);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
+  const [showPlusDropdown, setShowPlusDropdown] = useState(false);
   const [isAgentMode, setIsAgentMode] = useState(false);
 
   // Upgrade Popovers
@@ -1041,6 +1122,88 @@ export default function App() {
       localStorage.setItem("hackerai_active_chat_id", activeChatId);
     }
   }, [activeChatId, isTemporaryChat]);
+
+  // Firebase Auth State listener & Firestore synchronisation
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setCurrentUser(user);
+        try {
+          const userDocRef = doc(db, "users", user.uid);
+          const docSnap = await getDoc(userDocRef);
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            if (data.userProfile) {
+              setUserProfile(data.userProfile);
+            }
+            if (data.isOnboarded !== undefined) {
+              setIsOnboarded(data.isOnboarded);
+            }
+            if (data.conversations && Array.isArray(data.conversations)) {
+              setConversations(data.conversations);
+              if (data.activeChatId) {
+                setActiveChatId(data.activeChatId);
+                const found = data.conversations.find((c: any) => c.id === data.activeChatId);
+                if (found) {
+                  setMessages(found.messages);
+                }
+              } else if (data.conversations.length > 0) {
+                setActiveChatId(data.conversations[0].id);
+                setMessages(data.conversations[0].messages);
+              }
+            }
+          } else {
+            // Document does not exist. Save whatever local state we have
+            await setDoc(userDocRef, {
+              email: user.email,
+              userProfile,
+              isOnboarded,
+              conversations,
+              activeChatId,
+              createdAt: new Date().toISOString()
+            });
+          }
+        } catch (err) {
+          console.error("Erro ao sincronizar do Firestore:", err);
+        } finally {
+          setIsInitialSyncing(false);
+          setAuthLoading(false);
+        }
+      } else {
+        setCurrentUser(null);
+        setIsInitialSyncing(true);
+        setAuthLoading(false);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Sync state changes to Firestore
+  useEffect(() => {
+    if (currentUser && !isInitialSyncing && !authLoading) {
+      const syncData = async () => {
+        try {
+          const userDocRef = doc(db, "users", currentUser.uid);
+          await setDoc(userDocRef, {
+            userProfile,
+            isOnboarded,
+            conversations,
+            activeChatId,
+            lastUpdated: new Date().toISOString()
+          }, { merge: true });
+        } catch (error) {
+          console.error("Erro ao sincronizar para o Firestore:", error);
+        }
+      };
+
+      const timer = setTimeout(() => {
+        syncData();
+      }, 500);
+
+      return () => clearTimeout(timer);
+    }
+  }, [currentUser, isInitialSyncing, authLoading, userProfile, isOnboarded, conversations, activeChatId]);
 
   // ==========================================
   // AUTO-SCROLL & SCROLL TO BOTTOM CONTROL
@@ -1321,7 +1484,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
   };
 
   const filteredConversations = conversations.filter(chat =>
-    chat.title.toLowerCase().includes(searchQuery.toLowerCase())
+    chat && typeof chat.title === "string" && chat.title.toLowerCase().includes((searchQuery || "").toLowerCase())
   );
 
   // Launch Simulated Threat Modeling Pentest Automator
@@ -1457,9 +1620,486 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
     setFilename(type === "rce" ? "lookup.py" : "index.js");
   };
 
+  // Auth handlers
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!authEmail || !authPassword) {
+      setAuthError("Por favor, preencha todos os campos.");
+      return;
+    }
+    setAuthPending(true);
+    setAuthError("");
+    setAuthSuccessMsg("");
+    try {
+      await signInWithEmailAndPassword(auth, authEmail, authPassword);
+      setAuthSuccessMsg("Autenticado com sucesso! Carregando terminal...");
+      setAuthEmail("");
+      setAuthPassword("");
+    } catch (err: any) {
+      console.error(err);
+      let errorMsg = "Ocorreu um erro ao fazer login.";
+      const errStr = String(err?.code || err?.message || err || "");
+      if (
+        err.code === "auth/user-not-found" || 
+        err.code === "auth/wrong-password" || 
+        err.code === "auth/invalid-credential" ||
+        errStr.includes("user-not-found") ||
+        errStr.includes("wrong-password") ||
+        errStr.includes("invalid-credential")
+      ) {
+        errorMsg = "E-mail ou senha incorretos.";
+      } else if (err.code === "auth/invalid-email" || errStr.includes("invalid-email")) {
+        errorMsg = "Formato de e-mail inválido.";
+      } else if (err.code === "auth/too-many-requests" || errStr.includes("too-many-requests")) {
+        errorMsg = "Muitas tentativas malsucedidas de login. Tente novamente mais tarde.";
+      } else if (err.code === "auth/operation-not-allowed" || errStr.includes("operation-not-allowed")) {
+        errorMsg = "O provedor de autenticação de 'E-mail/Senha' está desativado no Firebase Console. Por favor, acesse o painel do Firebase deste projeto (Build > Authentication > Sign-in method) e ative a opção 'E-mail/Senha' para prosseguir.";
+      }
+      setAuthError(errorMsg);
+    } finally {
+      setAuthPending(false);
+    }
+  };
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!registerName || !authEmail || !authPassword || !authConfirmPassword) {
+      setAuthError("Por favor, preencha todos os campos.");
+      return;
+    }
+    if (authPassword !== authConfirmPassword) {
+      setAuthError("As senhas não coincidem.");
+      return;
+    }
+    if (authPassword.length < 6) {
+      setAuthError("A senha deve conter no mínimo 6 caracteres.");
+      return;
+    }
+    setAuthPending(true);
+    setAuthError("");
+    setAuthSuccessMsg("");
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
+      const user = userCredential.user;
+      
+      const namePart = registerName.trim();
+      const finalProfile = {
+        name: namePart,
+        age: "25",
+        profileType: "individual" as const,
+        howToCall: namePart.split(" ")[0],
+        goal: "Auditoria e Testes de Segurança"
+      };
+
+      setUserProfile(finalProfile);
+      setIsOnboarded(true); // Bypass onboarding since they provided name during register
+
+      // Save initial document to Firestore
+      const userDocRef = doc(db, "users", user.uid);
+      await setDoc(userDocRef, {
+        email: user.email,
+        userProfile: finalProfile,
+        isOnboarded: true,
+        conversations: [],
+        activeChatId: "default",
+        createdAt: new Date().toISOString()
+      });
+
+      setAuthSuccessMsg("Conta criada com sucesso! Carregando terminal...");
+      setRegisterName("");
+      setAuthEmail("");
+      setAuthPassword("");
+      setAuthConfirmPassword("");
+    } catch (err: any) {
+      console.error(err);
+      let errorMsg = "Erro ao criar conta.";
+      const errStr = String(err?.code || err?.message || err || "");
+      if (err.code === "auth/email-already-in-use" || errStr.includes("email-already-in-use")) {
+        errorMsg = "Este e-mail já está em uso por outra conta. Faça login ou utilize a recuperação de senha.";
+      } else if (err.code === "auth/invalid-email" || errStr.includes("invalid-email")) {
+        errorMsg = "Formato de e-mail inválido.";
+      } else if (err.code === "auth/weak-password" || errStr.includes("weak-password")) {
+        errorMsg = "Senha muito fraca. Insira pelo menos 6 caracteres.";
+      } else if (err.code === "auth/operation-not-allowed" || errStr.includes("operation-not-allowed")) {
+        errorMsg = "O método 'E-mail/Senha' está desativado no Firebase Console deste projeto. Acesse o Console do Firebase (Build > Authentication > Sign-in method) e ative a opção 'E-mail/Senha' para permitir novos cadastros.";
+      }
+      setAuthError(errorMsg);
+    } finally {
+      setAuthPending(false);
+    }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!authEmail) {
+      setAuthError("Por favor, preencha o campo de e-mail.");
+      return;
+    }
+    setAuthPending(true);
+    setAuthError("");
+    setAuthSuccessMsg("");
+    try {
+      await sendPasswordResetEmail(auth, authEmail);
+      setAuthSuccessMsg("E-mail de recuperação de senha enviado com sucesso! Verifique sua caixa de entrada.");
+      setAuthEmail("");
+    } catch (err: any) {
+      console.error(err);
+      let errorMsg = "Erro ao enviar e-mail de recuperação.";
+      if (err.code === "auth/user-not-found") {
+        errorMsg = "Nenhum usuário encontrado com este e-mail.";
+      } else if (err.code === "auth/invalid-email") {
+        errorMsg = "Formato de e-mail inválido.";
+      }
+      setAuthError(errorMsg);
+    } finally {
+      setAuthPending(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+      setCurrentUser(null);
+      setIsOnboarded(false);
+      setUserProfile({
+        name: "",
+        age: "",
+        profileType: "individual",
+        howToCall: "",
+        goal: ""
+      });
+      setConversations([]);
+      setMessages([{
+        role: "assistant",
+        content: "Olá! Eu sou o HackerAI. Como posso te auxiliar com seus testes ou correção de vulnerabilidades hoje?",
+        timestamp: "08:30"
+      }]);
+      setActiveChatId("default");
+      localStorage.removeItem("hackerfy_onboarded");
+      localStorage.removeItem("hackerfy_profile");
+      localStorage.removeItem("hackerai_conversations");
+      localStorage.removeItem("hackerai_active_chat_id");
+    } catch (err) {
+      console.error("Erro ao deslogar:", err);
+    }
+  };
+
   // Return JSX
+  if (authLoading) {
+    return (
+      <div id="auth-loading-screen" className="min-h-screen bg-[#0b0d10] flex flex-col justify-center items-center text-emerald-400 font-mono">
+        <div className="flex flex-col items-center gap-4">
+          <Terminal className="h-12 w-12 animate-pulse text-emerald-400" />
+          <p className="text-sm tracking-widest animate-pulse">CARREGANDO SISTEMA DE SEGURANÇA...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <div id="auth-container" className="min-h-screen bg-black text-[#ededee] font-sans flex flex-col justify-center items-center p-4 sm:p-6 relative overflow-hidden">
+        {/* WebGL Cosmic Shader Background */}
+        <ShaderCanvas />
+
+        <div className="w-full max-w-md relative bg-stone-950/75 backdrop-blur-xl border border-white/10 rounded-2xl p-6 sm:p-8 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.9)] flex flex-col z-10">
+          {/* Ambient thin neon green/blue strip at the top */}
+          <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-emerald-500 via-blue-500 to-emerald-500 rounded-t-2xl" />
+
+          {/* Icon and Title */}
+          <div className="text-center mb-6">
+            <div className="mx-auto h-12 w-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-3">
+              <Shield className="h-6 w-6 text-emerald-400" />
+            </div>
+            <h1 className="text-xl font-bold font-sans tracking-tight text-white uppercase">Portal de Segurança</h1>
+            <p className="text-[10px] text-stone-400 font-mono mt-1 tracking-wider uppercase">Ambiente de Auditoria & Desenvolvimento</p>
+          </div>
+
+          {authError && (
+            <div className="space-y-3 mb-4">
+              <div id="auth-error-banner" className="p-3 bg-rose-950/40 border border-rose-500/30 text-rose-400 text-xs rounded-lg flex items-start gap-2 font-mono">
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span>{authError}</span>
+              </div>
+              
+              {authError.includes("Firebase Console") && (
+                <div className="p-4 bg-[#0d0d0e]/90 border border-amber-500/25 text-stone-200 text-xs rounded-lg space-y-2.5 font-sans">
+                  <div className="flex items-center gap-2 text-amber-400 font-mono font-semibold uppercase tracking-wider text-[11px]">
+                    <span className="flex h-2 w-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                    COMO RESOLVER EM 1 MINUTO:
+                  </div>
+                  <ol className="list-decimal list-inside space-y-1.5 text-stone-300 text-[11px] leading-relaxed">
+                    <li className="pl-1">
+                      Abra o link do console do seu projeto:
+                      <div className="my-1.5">
+                        <a 
+                          href="https://console.firebase.google.com/project/gen-lang-client-0577970889/authentication/providers" 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="text-emerald-400 hover:text-emerald-300 font-mono text-[10px] break-all inline-flex items-center gap-1.5 bg-emerald-950/40 hover:bg-emerald-950/60 px-2 py-1 rounded border border-emerald-500/30 transition-all font-semibold"
+                        >
+                          Ir para Firebase Authentication ↗
+                        </a>
+                      </div>
+                    </li>
+                    <li className="pl-1">Clique na aba superior <strong className="text-white font-medium">"Sign-in method"</strong>.</li>
+                    <li className="pl-1">Clique no botão <strong className="text-white font-medium">"Add new provider"</strong> (Adicionar novo provedor).</li>
+                    <li className="pl-1">Escolha <strong className="text-white font-medium">"Email/Password"</strong> (E-mail/Senha).</li>
+                    <li className="pl-1">Ative o switch <strong className="text-white font-medium">"Enable"</strong> (E-mail/senha) e clique em <strong className="text-white font-medium">"Save"</strong> (Salvar).</li>
+                  </ol>
+                  <p className="text-[10px] text-stone-400 font-mono pt-1 border-t border-white/5">Após ativar, recarregue esta página para criar sua conta ou fazer login!</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {authSuccessMsg && (
+            <div id="auth-success-banner" className="mb-4 p-3 bg-emerald-950/40 border border-emerald-500/30 text-emerald-400 text-xs rounded-lg flex items-center gap-2 font-mono">
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <span>{authSuccessMsg}</span>
+            </div>
+          )}
+
+          {authMode === "login" && (
+            <form id="login-form" onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label className="block text-xs font-mono font-semibold text-stone-400 uppercase mb-1.5">Endereço de E-mail</label>
+                <input
+                  id="login-email-input"
+                  type="email"
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                  placeholder="exemplo@dominio.com"
+                  className="w-full bg-[#0d0d0e]/60 border border-white/10 text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg py-2 px-3 outline-none text-sm transition-all font-mono placeholder:text-stone-600"
+                  disabled={authPending}
+                  required
+                />
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-1.5">
+                  <label className="block text-xs font-mono font-semibold text-stone-400 uppercase">Senha</label>
+                  <button
+                    id="goto-forgot-btn"
+                    type="button"
+                    onClick={() => {
+                      setAuthMode("forgot");
+                      setAuthError("");
+                      setAuthSuccessMsg("");
+                    }}
+                    className="text-[11px] text-emerald-400 hover:text-emerald-300 font-mono focus:outline-none"
+                  >
+                    Esqueceu a senha?
+                  </button>
+                </div>
+                <input
+                  id="login-password-input"
+                  type="password"
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full bg-[#0d0d0e]/60 border border-white/10 text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg py-2 px-3 outline-none text-sm transition-all font-mono placeholder:text-stone-600"
+                  disabled={authPending}
+                  required
+                />
+              </div>
+
+              <button
+                id="login-submit-btn"
+                type="submit"
+                disabled={authPending}
+                className="w-full bg-gradient-to-r from-emerald-500 to-blue-600 hover:from-emerald-400 hover:to-blue-500 text-white font-mono font-bold py-2.5 rounded-lg transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:shadow-[0_0_25px_rgba(16,185,129,0.4)] text-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {authPending ? (
+                  <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <Lock className="h-4 w-4" />
+                    ACESSAR PLATAFORMA
+                  </>
+                )}
+              </button>
+
+              <div className="text-center pt-4 border-t border-white/5 mt-6">
+                <p className="text-xs text-stone-400">
+                  Novo por aqui?{" "}
+                  <button
+                    id="goto-register-btn"
+                    type="button"
+                    onClick={() => {
+                      setAuthMode("register");
+                      setAuthError("");
+                      setAuthSuccessMsg("");
+                    }}
+                    className="text-emerald-400 hover:text-emerald-300 font-bold focus:outline-none ml-1"
+                  >
+                    Criar uma Conta
+                  </button>
+                </p>
+              </div>
+            </form>
+          )}
+
+          {authMode === "register" && (
+            <form id="register-form" onSubmit={handleRegister} className="space-y-4">
+              <div>
+                <label className="block text-xs font-mono font-semibold text-stone-400 uppercase mb-1.5">Nome Completo</label>
+                <input
+                  id="register-name-input"
+                  type="text"
+                  value={registerName}
+                  onChange={(e) => setRegisterName(e.target.value)}
+                  placeholder="Seu Nome Completo"
+                  className="w-full bg-[#0d0d0e]/60 border border-white/10 text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg py-2 px-3 outline-none text-sm transition-all font-mono placeholder:text-stone-600"
+                  disabled={authPending}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-mono font-semibold text-stone-400 uppercase mb-1.5">Endereço de E-mail</label>
+                <input
+                  id="register-email-input"
+                  type="email"
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                  placeholder="exemplo@dominio.com"
+                  className="w-full bg-[#0d0d0e]/60 border border-white/10 text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg py-2 px-3 outline-none text-sm transition-all font-mono placeholder:text-stone-600"
+                  disabled={authPending}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-mono font-semibold text-stone-400 uppercase mb-1.5">Senha</label>
+                <input
+                  id="register-password-input"
+                  type="password"
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  placeholder="Mínimo 6 caracteres"
+                  className="w-full bg-[#0d0d0e]/60 border border-white/10 text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg py-2 px-3 outline-none text-sm transition-all font-mono placeholder:text-stone-600"
+                  disabled={authPending}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-mono font-semibold text-stone-400 uppercase mb-1.5">Confirmar Senha</label>
+                <input
+                  id="register-confirm-password-input"
+                  type="password"
+                  value={authConfirmPassword}
+                  onChange={(e) => setAuthConfirmPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full bg-[#0d0d0e]/60 border border-white/10 text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg py-2 px-3 outline-none text-sm transition-all font-mono placeholder:text-stone-600"
+                  disabled={authPending}
+                  required
+                />
+              </div>
+
+              <button
+                id="register-submit-btn"
+                type="submit"
+                disabled={authPending}
+                className="w-full bg-gradient-to-r from-emerald-500 to-blue-600 hover:from-emerald-400 hover:to-blue-500 text-white font-mono font-bold py-2.5 rounded-lg transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:shadow-[0_0_25px_rgba(16,185,129,0.4)] text-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {authPending ? (
+                  <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <PlusCircle className="h-4 w-4" />
+                    CADASTRAR CONTA
+                  </>
+                )}
+              </button>
+
+              <div className="text-center pt-4 border-t border-white/5 mt-6">
+                <p className="text-xs text-stone-400">
+                  Já possui uma conta?{" "}
+                  <button
+                    id="goto-login-btn-from-register"
+                    type="button"
+                    onClick={() => {
+                      setAuthMode("login");
+                      setAuthError("");
+                      setAuthSuccessMsg("");
+                    }}
+                    className="text-emerald-400 hover:text-emerald-300 font-bold focus:outline-none ml-1"
+                  >
+                    Fazer Login
+                  </button>
+                </p>
+              </div>
+            </form>
+          )}
+
+          {authMode === "forgot" && (
+            <form id="forgot-form" onSubmit={handleForgotPassword} className="space-y-4">
+              <div className="mb-2">
+                <p className="text-xs text-stone-400 font-mono leading-relaxed bg-[#0d0d0e]/60 p-3 border border-white/5 rounded-lg">
+                  INSIRA O E-MAIL REGISTRADO. VOCÊ RECEBERÁ UM LINK SEGURO PARA REDEFINIR SUA SENHA CRIPTOGRÁFICA.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-mono font-semibold text-stone-400 uppercase mb-1.5">Endereço de E-mail</label>
+                <input
+                  id="forgot-email-input"
+                  type="email"
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                  placeholder="exemplo@dominio.com"
+                  className="w-full bg-[#0d0d0e]/60 border border-white/10 text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg py-2 px-3 outline-none text-sm transition-all font-mono placeholder:text-stone-600"
+                  disabled={authPending}
+                  required
+                />
+              </div>
+
+              <button
+                id="forgot-submit-btn"
+                type="submit"
+                disabled={authPending}
+                className="w-full bg-gradient-to-r from-emerald-500 to-blue-600 hover:from-emerald-400 hover:to-blue-500 text-white font-mono font-bold py-2.5 rounded-lg transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:shadow-[0_0_25px_rgba(16,185,129,0.4)] text-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {authPending ? (
+                  <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <KeyRound className="h-4 w-4" />
+                    RECUPERAR ACESSO
+                  </>
+                )}
+              </button>
+
+              <div className="text-center pt-4 border-t border-white/5 mt-6">
+                <button
+                  id="goto-login-btn-from-forgot"
+                  type="button"
+                  onClick={() => {
+                    setAuthMode("login");
+                    setAuthError("");
+                    setAuthSuccessMsg("");
+                  }}
+                  className="text-xs text-stone-400 hover:text-white font-mono flex items-center justify-center gap-1.5 mx-auto focus:outline-none"
+                >
+                  Voltar para o Login
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* Core watermark */}
+          <div className="text-center mt-6 text-[9px] text-stone-600 font-mono uppercase tracking-wider">
+            SISTEMA INTEGRADO · CONEXÃO CRIPTOGRAFADA SSL
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[#0d0d0e] text-[#ededee] font-sans selection:bg-[#3b82f6] selection:text-white flex flex-col lg:flex-row relative overflow-x-hidden">
+    <div className="min-h-screen bg-[#0b0d10] text-[#ededee] font-sans selection:bg-[#3b82f6] selection:text-white flex flex-col lg:flex-row relative overflow-x-hidden">
       
       <style>{`
         @keyframes fadeIn {
@@ -2047,20 +2687,30 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
           )}
 
           {/* User profile entry matches screenshots */}
-          <div className={`flex items-center gap-2.5 p-1 rounded-lg ${isSidebarExpanded ? "" : "justify-center"}`}>
-            <div className="h-8 w-8 rounded-full bg-emerald-600 border border-emerald-500/20 text-white font-bold text-xs uppercase flex items-center justify-center shrink-0">
-              {userProfile.howToCall ? userProfile.howToCall.charAt(0).toUpperCase() : "M"}
-            </div>
-            {isSidebarExpanded && (
-              <div className="min-w-0 flex-1 leading-tight">
-                <p className="text-xs font-semibold text-white truncate">
-                  {userProfile.name || "Marcos Henrique"}
-                </p>
-                <p className="text-[10px] text-emerald-400 font-mono font-semibold">
-                  {userProfile.profileType === "empresa" ? "Conta Enterprise" : "Conta Ultra (Ilimitada)"}
-                </p>
+          <div className={`flex items-center justify-between gap-2 p-1 rounded-lg ${isSidebarExpanded ? "" : "justify-center"}`}>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="h-8 w-8 rounded-full bg-emerald-600 border border-emerald-500/20 text-white font-bold text-xs uppercase flex items-center justify-center shrink-0">
+                {userProfile.howToCall ? userProfile.howToCall.charAt(0).toUpperCase() : "M"}
               </div>
-            )}
+              {isSidebarExpanded && (
+                <div className="min-w-0 flex-1 leading-tight">
+                  <p className="text-xs font-semibold text-white truncate">
+                    {userProfile.name || "Marcos Henrique"}
+                  </p>
+                  <p className="text-[10px] text-emerald-400 font-mono font-semibold">
+                    {userProfile.profileType === "empresa" ? "Conta Enterprise" : "Conta Ultra (Ilimitada)"}
+                  </p>
+                </div>
+              )}
+            </div>
+            <button
+              id="sidebar-logout-btn"
+              onClick={handleSignOut}
+              className="p-1.5 rounded-lg hover:bg-rose-950/20 text-stone-400 hover:text-rose-400 transition flex items-center justify-center focus:outline-none shrink-0 cursor-pointer"
+              title="Sair da Conta"
+            >
+              <LogOut className="h-4.5 w-4.5" />
+            </button>
           </div>
         </div>
       </aside>
@@ -2138,18 +2788,6 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                 {t[lang].tabChat}
               </button>
               <button
-                onClick={() => handleTabChange("audit")}
-                className={`px-3 py-1.5 sm:py-1 rounded font-medium transition shrink-0 ${activeTab === "audit" ? "bg-[#1f1f22] text-[#fff]" : "text-stone-400 hover:text-white"}`}
-              >
-                {t[lang].tabAudit}
-              </button>
-              <button
-                onClick={() => handleTabChange("pentest")}
-                className={`px-3 py-1.5 sm:py-1 rounded font-medium transition shrink-0 ${activeTab === "pentest" ? "bg-[#1f1f22] text-[#fff]" : "text-stone-400 hover:text-white"}`}
-              >
-                {t[lang].tabPentest}
-              </button>
-              <button
                 onClick={() => handleTabChange("news")}
                 className={`px-3 py-1.5 sm:py-1 rounded font-medium transition shrink-0 ${activeTab === "news" ? "bg-[#1f1f22] text-[#fff]" : "text-stone-400 hover:text-white"}`}
               >
@@ -2204,7 +2842,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
         </header>
 
         {/* Dashboard Frame Area */}
-        <main className="flex-1 flex flex-col justify-center items-center px-4 py-8 max-w-4xl w-full mx-auto">
+        <main className="flex-1 flex flex-col justify-center items-center px-4 py-8 max-w-[1000px] w-full mx-auto">
 
           {/* Hero Segment */}
           <section className="text-center mb-8 max-w-lg space-y-2 select-none">
@@ -2236,12 +2874,12 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
             
             {/* Tab: General AI Chatbot */}
             {activeTab === "chat" && (
-              <div className="w-full flex flex-col bg-[#111112] border border-[#1e1e20] rounded-2xl overflow-hidden shadow-2xl relative">
+              <div className="seu-container-de-chat flex flex-col relative">
                 {/* Conversation messages trace */}
                 <div 
                   ref={chatContainerRef}
                   onScroll={handleScroll}
-                  className="p-5 min-h-[160px] max-h-[380px] overflow-y-auto space-y-4 font-sans leading-relaxed scroll-smooth"
+                  className="p-5 w-full space-y-6 font-sans leading-relaxed scroll-smooth pb-12"
                 >
                   {messages.map((m, idx) => (
                     <div key={idx} className={`flex gap-3.5 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
@@ -2316,35 +2954,39 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                   </button>
                 )}
 
-                {/* Input block mimicking HackerAI user interface custom input precisely */}
-                <div className="p-4 border-t border-[#1e1e20] bg-[#141415]/75">
-                  <div className="border border-[#262629]/90 bg-[#161617] rounded-xl p-3 flex flex-col gap-2 shadow-inner transition focus-within:border-emerald-500/30">
-                    <textarea
-                      value={chatInput}
-                      onChange={(e) => setChatInput(e.target.value)}
-                      placeholder={t[lang].heroInputPlaceholder}
-                      rows={2}
-                      className="bg-transparent text-xs text-stone-100 placeholder-stone-500 border-none outline-none focus:ring-0 resize-none w-full leading-relaxed"
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          sendChatMessage();
-                        }
-                      }}
-                    />
+                {/* Sticky input container mimicking Gemini's docked input perfectly */}
+                <div className="sticky bottom-0 left-0 right-0 w-full bg-gradient-to-t from-[#0b0d10] via-[#0b0d10] to-transparent pt-10 pb-4 z-30">
+                  <div className="relative w-full">
+                    {/* The plus button dropdown popover */}
+                    {showPlusDropdown && (
+                      <div className="absolute left-0 bottom-full mb-3 bg-[#1e1f20] border border-[#2d2f31] rounded-2xl shadow-2xl py-2 w-72 z-50 animate-in fade-in slide-in-from-bottom-2 text-stone-200">
+                        {activeTab !== "chat" && (
+                          <>
+                            <button
+                              onClick={() => {
+                                setShowPlusDropdown(false);
+                                handleTabChange("chat");
+                              }}
+                              className="w-full text-left px-4 py-2.5 hover:bg-[#2b2c2e] transition flex items-center gap-3 text-emerald-400"
+                            >
+                              <MessageSquare className="h-4.5 w-4.5" />
+                              <span className="text-xs font-semibold">Voltar ao Chat Principal</span>
+                            </button>
+                            <div className="border-t border-[#2d2f31] my-1"></div>
+                          </>
+                        )}
 
-                    {/* Footer interface toolbar within input box */}
-                    <div className="flex flex-wrap justify-between items-center gap-2 pt-2.5 border-t border-[#232326]/60">
-                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                        {/* File Clip Button */}
                         <button
-                          onClick={() => fileInputRef.current?.click()}
-                          className="p-1.5 rounded-md hover:bg-[#202021] text-emerald-400 hover:text-emerald-300 transition"
-                          title="Anexar arquivo de código"
+                          onClick={() => {
+                            setShowPlusDropdown(false);
+                            fileInputRef.current?.click();
+                          }}
+                          className="w-full text-left px-4 py-2.5 hover:bg-[#2b2c2e] transition flex items-center gap-3"
                         >
-                          <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <svg className="h-4.5 w-4.5 text-stone-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
                           </svg>
+                          <span className="text-xs font-medium">Enviar arquivos</span>
                         </button>
                         <input
                           type="file"
@@ -2354,130 +2996,147 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                           accept=".js,.ts,.tsx,.json,.py,.java,.cs,.go,.php,.html,.css,.md,.txt"
                         />
 
-                        {/* Microphone Speech To Text precise transcription button */}
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={isRecordingSTT ? stopRecordingSingleSTT : startRecordingSingleSTT}
-                            className={`p-1.5 rounded-md transition relative flex items-center justify-center ${
-                              isRecordingSTT 
-                                ? "bg-rose-500/10 text-rose-500 border border-rose-500/30 animate-pulse hover:bg-rose-500/20" 
-                                : "hover:bg-[#202021] text-emerald-400 hover:text-emerald-300"
-                            }`}
-                            title={isRecordingSTT ? "Parar Gravação" : "Gravar Áudio para Texto"}
-                          >
-                            {isRecordingSTT ? (
-                              <MicOff className="h-4.5 w-4.5 shrink-0" />
-                            ) : (
-                              <Mic className="h-4.5 w-4.5 shrink-0" />
-                            )}
-                          </button>
-                          
-                          {sttStatus && (
-                            <span className="text-[10px] text-stone-400 font-mono flex items-center gap-1.5 px-1 bg-[#19191b] rounded border border-white/5 animate-pulse">
-                              <span className="h-1.5 w-1.5 rounded-full bg-rose-500"></span>
-                              <span>{sttStatus}</span>
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Auto-read voice feedback toggle button */}
+                        {/* Scanner de Código (SAST) */}
                         <button
-                          type="button"
                           onClick={() => {
+                            setShowPlusDropdown(false);
+                            handleTabChange("audit");
+                          }}
+                          className={`w-full text-left px-4 py-2.5 hover:bg-[#2b2c2e] transition flex items-center gap-3 ${activeTab === "audit" ? "bg-[#252628] text-white" : ""}`}
+                        >
+                          <Code2 className="h-4.5 w-4.5 text-emerald-400" />
+                          <div className="flex-1 flex flex-col">
+                            <span className="text-xs font-semibold">Scanner de Código (SAST)</span>
+                            <span className="text-[9px] text-stone-400">Analise vulnerabilidades no seu código</span>
+                          </div>
+                        </button>
+
+                        {/* Automação de Pentests */}
+                        <button
+                          onClick={() => {
+                            setShowPlusDropdown(false);
+                            handleTabChange("pentest");
+                          }}
+                          className={`w-full text-left px-4 py-2.5 hover:bg-[#2b2c2e] transition flex items-center gap-3 ${activeTab === "pentest" ? "bg-[#252628] text-white" : ""}`}
+                        >
+                          <Terminal className="h-4.5 w-4.5 text-blue-400" />
+                          <div className="flex-1 flex flex-col">
+                            <span className="text-xs font-semibold">Automação de Pentests</span>
+                            <span className="text-[9px] text-stone-400">Simulador de intrusão e exploits</span>
+                          </div>
+                        </button>
+
+                        <div className="border-t border-[#2d2f31] my-1"></div>
+
+                        {/* Auto-read voice feedback toggle inside '+' */}
+                        <button
+                          onClick={() => {
+                            setShowPlusDropdown(false);
                             if (isAutoVoiceEnabled) {
                               stopTTS();
                               setIsAutoVoiceEnabled(false);
                             } else {
                               setIsAutoVoiceEnabled(true);
-                              speakText(lang === "pt" ? "Resposta por voz ativada. Vou responder falando!" : "Voice response enabled. I will read my replies aloud!");
+                              speakText(lang === "pt" ? "Resposta por voz ativada." : "Voice response enabled.");
                             }
                           }}
-                          className={`px-2 py-1.5 rounded-lg text-[10px] font-bold border transition flex items-center gap-1.5 cursor-pointer ${
-                            isAutoVoiceEnabled 
-                              ? "bg-purple-500/10 text-purple-400 border-purple-500/20 hover:bg-purple-500/20" 
-                              : "bg-[#18181a] text-stone-500 border-[#2a2a2c] hover:text-stone-300 hover:bg-[#202022]"
-                          }`}
-                          title={isAutoVoiceEnabled ? "Desativar Leitura de Voz" : "Ativar Leitura de Voz Automática"}
+                          className="w-full text-left px-4 py-2.5 hover:bg-[#2b2c2e] transition flex items-center justify-between"
                         >
-                          {isAutoVoiceEnabled ? (
-                            <>
-                              <Volume2 className="h-3.5 w-3.5 text-purple-400 animate-pulse shrink-0" />
-                              <span className="hidden xs:inline">Auto Voz Ativa</span>
-                            </>
-                          ) : (
-                            <>
-                              <VolumeX className="h-3.5 w-3.5 text-stone-500 shrink-0" />
-                              <span className="hidden xs:inline text-stone-500">Sem Voz</span>
-                            </>
-                          )}
+                          <div className="flex items-center gap-3">
+                            {isAutoVoiceEnabled ? (
+                              <Volume2 className="h-4.5 w-4.5 text-purple-400" />
+                            ) : (
+                              <VolumeX className="h-4.5 w-4.5 text-stone-400" />
+                            )}
+                            <span className="text-xs font-medium">Resposta por Voz</span>
+                          </div>
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${isAutoVoiceEnabled ? "bg-purple-950/40 text-purple-400 border border-purple-500/10" : "bg-stone-900 text-stone-500"}`}>
+                            {isAutoVoiceEnabled ? "ATIVADO" : "DESATIVADO"}
+                          </span>
                         </button>
 
-                        {/* Ask Button Dropdown matched to Screenshot 2 */}
-                        <div className="relative">
-                          <button
-                            onClick={() => {
-                              setShowAskDropdown(!showAskDropdown);
-                              setShowModelDropdown(false);
-                            }}
-                            className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-semibold text-stone-300 hover:text-white bg-[#202022] rounded-lg border border-[#2a2a2c] hover:bg-[#28282b] transition leading-none"
-                          >
-                            <svg className="h-3 w-3 text-purple-400 mr-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                        {/* Toggle Temporary / Incognito Chat inside '+' dropdown */}
+                        <button
+                          onClick={() => {
+                            setShowPlusDropdown(false);
+                            handleToggleTemporary();
+                          }}
+                          className="w-full text-left px-4 py-2.5 hover:bg-[#2b2c2e] transition flex items-center justify-between"
+                        >
+                          <div className="flex items-center gap-3">
+                            <svg className="h-4.5 w-4.5 text-stone-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M2.5 12h19M12 2A10 10 0 0 1 22 12H2A10 10 0 0 1 12 2z" />
+                              <circle cx="7" cy="18" r="2.5" />
+                              <circle cx="17" cy="18" r="2.5" />
                             </svg>
-                            <span>{isAgentMode ? t[lang].agentButton : t[lang].askButton}</span>
-                            <ChevronDown className="h-3 w-3 text-stone-500" />
-                          </button>
+                            <span className="text-xs font-medium">Chat Temporário</span>
+                          </div>
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${isTemporaryChat ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/10" : "bg-stone-900 text-stone-500"}`}>
+                            {isTemporaryChat ? "ATIVADO" : "DESATIVADO"}
+                          </span>
+                        </button>
+                      </div>
+                    )}
 
-                          {showAskDropdown && (
-                            <div className="absolute left-0 bottom-full mb-2 bg-[#171719] border border-[#2d2f31] rounded-xl shadow-2xl py-1.5 w-64 z-50 animate-in fade-in slide-in-from-bottom-2 leading-normal">
-                              <button
-                                onClick={() => {
-                                  setIsAgentMode(false);
-                                  setShowAskDropdown(false);
-                                }}
-                                className="w-full text-left px-3.5 py-2 hover:bg-[#202022] transition"
-                              >
-                                <span className="font-bold block text-xs text-stone-200">
-                                  {t[lang].askButton}
-                                </span>
-                                <span className="text-[10px] text-stone-400 leading-snug block mt-0.5">{t[lang].askSubText}</span>
-                              </button>
-                              <div className="border-t border-[#232326] my-1.5"></div>
-                              <button
-                                onClick={() => {
-                                  setIsAgentMode(true);
-                                  setShowAskDropdown(false);
-                                }}
-                                className="w-full text-left px-3.5 py-2 hover:bg-[#202022] transition"
-                              >
-                                <span className="font-bold block text-xs text-emerald-400 flex items-center gap-1">
-                                  <Sparkles className="h-3.5 w-3.5 shrink-0" /> {t[lang].agentButton}
-                                </span>
-                                <span className="text-[10px] text-stone-400 leading-snug block mt-0.5">{t[lang].agentSubText}</span>
-                              </button>
-                            </div>
-                          )}
-                        </div>
+                    {/* Pill layout matching Gemini Input Box precisely */}
+                    <div className="w-full flex items-center bg-[#1e1f20] hover:bg-[#2a2b2d] focus-within:bg-[#1e1f20] border border-[#2d2f31] focus-within:border-[#4285f4] rounded-full px-4 py-2 shadow-md transition-all">
+                      {/* Plus Button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowPlusDropdown(!showPlusDropdown);
+                          setShowModelDropdown(false);
+                          setShowAskDropdown(false);
+                        }}
+                        className="p-2 rounded-full hover:bg-[#2d2f31] text-stone-300 transition mr-1 shrink-0 flex items-center justify-center cursor-pointer"
+                        title="Mais ferramentas"
+                      >
+                        <Plus className="h-5 w-5" />
+                      </button>
 
-                        {/* Model Selector Dropdown - Matches Right-side card in Screenshot 4 */}
+                      {/* Textarea */}
+                      <textarea
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        placeholder={t[lang].heroInputPlaceholder}
+                        rows={1}
+                        className="bg-transparent text-[13px] text-stone-100 placeholder-stone-500 border-none outline-none focus:ring-0 resize-none w-full leading-normal py-1"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            sendChatMessage();
+                          }
+                        }}
+                      />
+
+                      {/* Right Controls Container */}
+                      <div className="flex items-center gap-1 sm:gap-2 shrink-0 ml-2">
+                        {sttStatus && (
+                          <span className="text-[9px] text-stone-400 font-mono flex items-center gap-1 px-1.5 bg-[#141415] rounded-full border border-white/5 animate-pulse shrink-0">
+                            <span className="h-1.5 w-1.5 rounded-full bg-rose-500"></span>
+                            <span>{sttStatus}</span>
+                          </span>
+                        )}
+
+                        {/* Model Selector styled cleanly like Gemini's "Flash v" */}
                         <div className="relative">
                           <button
+                            type="button"
                             onClick={() => {
                               setShowModelDropdown(!showModelDropdown);
                               setShowAskDropdown(false);
+                              setShowPlusDropdown(false);
                             }}
-                            className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-semibold text-stone-300 hover:text-white bg-[#202022] rounded-lg border border-[#2a2a2c] hover:bg-[#28282b] transition leading-none"
+                            className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-stone-300 hover:text-white bg-[#2b2c2e]/60 hover:bg-[#2d2f31] rounded-full border border-stone-700/35 transition select-none leading-none"
                           >
-                            <Shield className="h-3 w-3 text-blue-400 mr-0.5" />
-                            <span>{t[lang].models}</span>
-                            <ChevronDown className="h-3 w-3 text-stone-500" />
+                            <span>{currentModel === "standard" ? "Standard" : currentModel === "pro" ? "Pro" : "Max"}</span>
+                            <ChevronDown className="h-3.5 w-3.5 text-stone-400" />
                           </button>
 
+                          {/* Model Selection Dropdown content */}
                           {showModelDropdown && (
-                            <div className="absolute left-0 bottom-full mb-2 bg-[#141416] border border-[#242426] rounded-xl shadow-2xl flex md:w-[480px] w-72 overflow-hidden z-50 text-left leading-normal animate-in fade-in slide-in-from-bottom-2">
-                              {/* Left Columns - Model Selection Links */}
-                              <div className="flex-1 p-2 space-y-1 bg-[#141416]">
+                            <div className="absolute right-0 bottom-full mb-3 bg-[#1e1f20] border border-[#2d2f31] rounded-2xl shadow-2xl flex md:w-[420px] w-72 overflow-hidden z-50 text-left leading-normal animate-in fade-in slide-in-from-bottom-2">
+                              <div className="flex-1 p-2 space-y-1">
                                 <div className="p-2">
                                   <span className="text-[#ebd59a] text-[9px] uppercase font-black tracking-widest block mb-1">{t[lang].topHackerModels}</span>
                                   <span className="text-[10px] text-stone-300 block hover:underline cursor-pointer">{t[lang].accessTopModels}</span>
@@ -2488,9 +3147,9 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                                     setCurrentModel("standard");
                                     setShowModelDropdown(false);
                                   }}
-                                  className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-[#1e1e21] transition flex items-center justify-between text-xs"
+                                  className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-[#2b2c2e] transition flex items-center justify-between text-xs text-stone-200"
                                 >
-                                  <span className="font-semibold text-stone-200">{t[lang].modelStandard} <span className="text-[9px] text-[#ebd59a] font-mono ml-1">$$$</span></span>
+                                  <span className="font-semibold">{t[lang].modelStandard} <span className="text-[9px] text-[#ebd59a] font-mono ml-1">$$$</span></span>
                                   {currentModel === "standard" && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />}
                                 </button>
                                 <button
@@ -2498,9 +3157,9 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                                     setCurrentModel("pro");
                                     setShowModelDropdown(false);
                                   }}
-                                  className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-[#1e1e21] transition flex items-center justify-between text-xs"
+                                  className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-[#2b2c2e] transition flex items-center justify-between text-xs text-stone-200"
                                 >
-                                  <span className="font-semibold text-stone-200">{t[lang].modelPro} <span className="text-[9px] text-emerald-400 font-mono ml-1">$$$</span></span>
+                                  <span className="font-semibold">{t[lang].modelPro} <span className="text-[9px] text-emerald-400 font-mono ml-1">$$$</span></span>
                                   {currentModel === "pro" && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />}
                                 </button>
                                 <button
@@ -2508,43 +3167,102 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                                     setCurrentModel("max");
                                     setShowModelDropdown(false);
                                   }}
-                                  className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-[#1e1e21] transition flex items-center justify-between text-xs"
+                                  className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-[#2b2c2e] transition flex items-center justify-between text-xs text-stone-200"
                                 >
-                                  <span className="font-semibold text-stone-200">{t[lang].modelMax} <span className="text-[9px] text-indigo-400 font-mono ml-1">$$$+</span></span>
+                                  <span className="font-semibold">{t[lang].modelMax} <span className="text-[9px] text-indigo-400 font-mono ml-1">$$$+</span></span>
                                   {currentModel === "max" && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />}
                                 </button>
-                              </div>
-
-                              {/* Right Columns - Model Details match popup container */}
-                              <div className="w-1/2 p-4 bg-[#1a1a1c] border-l border-[#242426] hidden md:flex flex-col justify-between text-[11px] leading-relaxed">
-                                <div className="space-y-1.5">
-                                  <span className="text-stone-300 font-bold block">{t[lang].standardPerformance}</span>
-                                  <p className="text-stone-500 font-sans text-[10px]">
-                                    {t[lang].poweredByText}
-                                  </p>
-                                </div>
-                                <div className="text-emerald-400 text-[10px] font-semibold block pt-2 mt-auto flex items-center gap-1 leading-none select-none">
-                                  <Sparkles className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-                                  <span>Todos os modelos liberados</span>
-                                </div>
                               </div>
                             </div>
                           )}
                         </div>
-                      </div>
 
-                      {/* Launch Scan Circle Button matching Screenshot 4 */}
-                      <button
-                        onClick={sendChatMessage}
-                        disabled={!chatInput.trim()}
-                        className={`h-8 w-8 rounded-full flex items-center justify-center transition shadow ${
-                          chatInput.trim() 
-                            ? "bg-stone-100 text-black hover:bg-white cursor-pointer" 
-                            : "bg-[#252527] text-stone-500 cursor-not-allowed"
-                        }`}
-                      >
-                        <ArrowUp className="h-4.5 w-4.5 shrink-0" strokeWidth={2.5} />
-                      </button>
+                        {/* Ask / Agent Toggle Dropdown */}
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowAskDropdown(!showAskDropdown);
+                              setShowModelDropdown(false);
+                              setShowPlusDropdown(false);
+                            }}
+                            className={`flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-full border transition select-none leading-none ${
+                              isAgentMode 
+                                ? "bg-emerald-950/40 text-emerald-400 border-emerald-500/20 hover:bg-emerald-950/60" 
+                                : "bg-[#2b2c2e]/60 text-stone-300 hover:text-white border-stone-700/35 hover:bg-[#2d2f31]"
+                            }`}
+                          >
+                            <svg className={`h-3.5 w-3.5 mr-0.5 ${isAgentMode ? "text-emerald-400" : "text-purple-400"}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                              {isAgentMode ? (
+                                <path d="M12 2a10 10 0 1 0 10 10H12V2z" />
+                              ) : (
+                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                              )}
+                            </svg>
+                            <span>{isAgentMode ? "Agente" : "Perguntar"}</span>
+                            <ChevronDown className="h-3.5 w-3.5 opacity-65" />
+                          </button>
+
+                          {showAskDropdown && (
+                            <div className="absolute right-0 bottom-full mb-3 bg-[#1e1f20] border border-[#2d2f31] rounded-2xl shadow-2xl py-1.5 w-60 z-50 animate-in fade-in slide-in-from-bottom-2 leading-normal">
+                              <button
+                                onClick={() => {
+                                  setIsAgentMode(false);
+                                  setShowAskDropdown(false);
+                                }}
+                                className="w-full text-left px-4 py-2 hover:bg-[#2b2c2e] transition"
+                              >
+                                <span className="font-bold block text-xs text-stone-200">
+                                  {t[lang].askButton}
+                                </span>
+                                <span className="text-[10px] text-stone-400 leading-snug block mt-0.5">{t[lang].askSubText}</span>
+                              </button>
+                              <div className="border-t border-[#2d2f31] my-1.5"></div>
+                              <button
+                                onClick={() => {
+                                  setIsAgentMode(true);
+                                  setShowAskDropdown(false);
+                                }}
+                                className="w-full text-left px-4 py-2 hover:bg-[#2b2c2e] transition"
+                              >
+                                <span className="font-bold block text-xs text-emerald-400 flex items-center gap-1">
+                                  <Sparkles className="h-3.5 w-3.5 shrink-0" /> {t[lang].agentButton}
+                                </span>
+                                <span className="text-[10px] text-stone-400 leading-snug block mt-0.5">{t[lang].agentSubText}</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Microphone Button */}
+                        <button
+                          type="button"
+                          onClick={isRecordingSTT ? stopRecordingSingleSTT : startRecordingSingleSTT}
+                          className={`p-1.5 rounded-full transition flex items-center justify-center shrink-0 cursor-pointer ${
+                            isRecordingSTT 
+                              ? "bg-rose-500 text-white animate-pulse" 
+                              : "hover:bg-[#2d2f31] text-stone-300 hover:text-white"
+                          }`}
+                          title={isRecordingSTT ? "Parar gravação" : "Gravar áudio"}
+                        >
+                          <Mic className="h-5 w-5 shrink-0" />
+                        </button>
+
+                        {/* Send Message Button */}
+                        <button
+                          type="button"
+                          onClick={sendChatMessage}
+                          disabled={!chatInput.trim()}
+                          className={`p-1.5 rounded-full flex items-center justify-center transition shrink-0 ${
+                            chatInput.trim() 
+                              ? "bg-white text-black hover:bg-stone-200 cursor-pointer" 
+                              : "text-stone-600 cursor-not-allowed"
+                          }`}
+                          title="Enviar mensagem"
+                        >
+                          <ArrowUp className="h-5 w-5 shrink-0" strokeWidth={2.5} />
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -2829,9 +3547,9 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                         <div 
                           key={idx} 
                           className={`p-1 rounded ${
-                            log.includes("WARNING") || log.includes("CRITICAL") 
+                            log && typeof log === "string" && (log.includes("WARNING") || log.includes("CRITICAL")) 
                               ? "text-amber-400 bg-amber-950/10 border-l-2 border-amber-500 pl-2" 
-                              : log.includes("EXPLOITATION") || log.includes("SUCCEEDED")
+                              : log && typeof log === "string" && (log.includes("EXPLOITATION") || log.includes("SUCCEEDED"))
                               ? "text-rose-400 bg-rose-950/15 border-l-2 border-rose-500 pl-2 font-bold" 
                               : "text-stone-300"
                           }`}
@@ -3039,17 +3757,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
 
         </main>
 
-        {/* Global Footer */}
-        <footer className="border-t border-[#1a1a1c] py-6 px-5 mt-auto bg-[#070708] text-center text-[10px] text-stone-600 font-sans tracking-wide">
-          <div className="max-w-4xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-3">
-            <p>© {new Date().getFullYear()} {t[lang].footerText}</p>
-            <div className="flex gap-4 text-stone-400 hover:text-white text-[10px]">
-              <a href="#" className="hover:underline">{t[lang].termsOfService}</a>
-              <a href="#" className="hover:underline">{t[lang].privacyPolicy}</a>
-              <a href="#" className="hover:underline">{t[lang].advisoryDisclaimer}</a>
-            </div>
-          </div>
-        </footer>
+
 
       </div>
 
