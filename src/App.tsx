@@ -3577,6 +3577,45 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
 
                         <div className="border-t border-[#2d2f31] my-1"></div>
 
+                        {/* IA Model Selector inside '+' */}
+                        <button
+                          onClick={() => {
+                            const nextModel = currentModel === "standard" ? "pro" : currentModel === "pro" ? "max" : "standard";
+                            setCurrentModel(nextModel);
+                            showToast(lang === "pt" ? `Modelo alterado para HackerAI ${nextModel.toUpperCase()}` : `Model changed to HackerAI ${nextModel.toUpperCase()}`, "info");
+                          }}
+                          className="w-full text-left px-4 py-2.5 hover:bg-[#2b2c2e] transition flex items-center justify-between"
+                        >
+                          <div className="flex items-center gap-3">
+                            <Sparkles className="h-4.5 w-4.5 text-amber-400 shrink-0" />
+                            <span className="text-xs font-medium">{lang === "pt" ? "Modelo de IA" : "AI Model"}</span>
+                          </div>
+                          <span className="text-[9px] font-mono font-bold text-amber-400 uppercase tracking-widest bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/15">
+                            {currentModel.toUpperCase()}
+                          </span>
+                        </button>
+
+                        {/* Agent Mode Selector Toggle inside '+' */}
+                        <button
+                          onClick={() => {
+                            setIsAgentMode(!isAgentMode);
+                            showToast(lang === "pt" ? (isAgentMode ? "Modo de chat restaurado" : "Modo Criar Sites ativado") : (isAgentMode ? "Chat mode restored" : "Create Sites mode activated"), "info");
+                          }}
+                          className="w-full text-left px-4 py-2.5 hover:bg-[#2b2c2e] transition flex items-center justify-between"
+                        >
+                          <div className="flex items-center gap-3">
+                            <svg className="h-4.5 w-4.5 text-emerald-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M12 2a10 10 0 1 0 10 10H12V2z" />
+                            </svg>
+                            <span className="text-xs font-medium">{lang === "pt" ? "Criar Sites (Gemini)" : "Create Sites (Gemini)"}</span>
+                          </div>
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${isAgentMode ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/10" : "bg-stone-900 text-stone-500"}`}>
+                            {isAgentMode ? "ATIVADO" : "DESATIVADO"}
+                          </span>
+                        </button>
+
+                        <div className="border-t border-[#2d2f31] my-1"></div>
+
                         {/* Mobile App PWA Install Option */}
                         <button
                           onClick={() => {
@@ -3599,7 +3638,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                     )}
 
                     {/* Pill layout matching Gemini Input Box precisely */}
-                    <div className="w-full flex items-center bg-[#1e1f20] hover:bg-[#2a2b2d] focus-within:bg-[#1e1f20] border border-[#2d2f31] focus-within:border-[#4285f4] rounded-full px-4 py-2 shadow-md transition-all">
+                    <div className="w-full flex items-center bg-[#1e1f20] hover:bg-[#2a2b2d] focus-within:bg-[#1e1f20] border border-[#2d2f31] focus-within:border-[#4285f4] rounded-full px-3 py-1.5 sm:px-4 sm:py-2 shadow-md transition-all">
                       {/* Plus Button */}
                       <button
                         type="button"
@@ -3608,19 +3647,19 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                           setShowModelDropdown(false);
                           setShowAskDropdown(false);
                         }}
-                        className="p-2 rounded-full hover:bg-[#2d2f31] text-stone-300 transition mr-1 shrink-0 flex items-center justify-center cursor-pointer"
+                        className="p-1.5 sm:p-2 rounded-full hover:bg-[#2d2f31] text-stone-300 transition mr-1 shrink-0 flex items-center justify-center cursor-pointer"
                         title="Mais ferramentas"
                       >
                         <Plus className="h-5 w-5" />
                       </button>
 
-                      {/* Textarea */}
+                      {/* Textarea - flex-1 and text-base on mobile prevents iOS forced zooming while keeping elegant sizing */}
                       <textarea
                         value={chatInput}
                         onChange={(e) => setChatInput(e.target.value)}
                         placeholder={t[lang].heroInputPlaceholder}
                         rows={1}
-                        className="bg-transparent text-[13px] text-stone-100 placeholder-stone-500 border-none outline-none focus:ring-0 resize-none w-full leading-normal py-1"
+                        className="bg-transparent text-base sm:text-[13px] text-stone-100 placeholder-stone-500 border-none outline-none focus:ring-0 resize-none flex-1 min-w-[50px] leading-normal py-1.5 px-1"
                         onKeyDown={(e) => {
                           if (e.key === "Enter" && !e.shiftKey) {
                             e.preventDefault();
@@ -3630,7 +3669,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                       />
 
                       {/* Right Controls Container */}
-                      <div className="flex items-center gap-1 sm:gap-2 shrink-0 ml-2">
+                      <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 ml-1">
                         {sttStatus && (
                           <span className="text-[9px] text-stone-400 font-mono flex items-center gap-1 px-1.5 bg-[#141415] rounded-full border border-white/5 animate-pulse shrink-0">
                             <span className="h-1.5 w-1.5 rounded-full bg-rose-500"></span>
@@ -3638,131 +3677,11 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                           </span>
                         )}
 
-                        {/* Model Selector styled cleanly like Gemini's "Flash v" */}
-                        <div className="relative">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShowModelDropdown(!showModelDropdown);
-                              setShowAskDropdown(false);
-                              setShowPlusDropdown(false);
-                            }}
-                            className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-stone-300 hover:text-white bg-[#2b2c2e]/60 hover:bg-[#2d2f31] rounded-full border border-stone-700/35 transition select-none leading-none"
-                          >
-                            <span>{currentModel === "standard" ? "Standard" : currentModel === "pro" ? "Pro" : "Max"}</span>
-                            <ChevronDown className="h-3.5 w-3.5 text-stone-400" />
-                          </button>
-
-                          {/* Model Selection Dropdown content */}
-                          {showModelDropdown && (
-                            <div className="absolute right-0 bottom-full mb-3 bg-[#1e1f20] border border-[#2d2f31] rounded-2xl shadow-2xl flex md:w-[420px] w-72 overflow-hidden z-50 text-left leading-normal animate-in fade-in slide-in-from-bottom-2">
-                              <div className="flex-1 p-2 space-y-1">
-                                <div className="p-2">
-                                  <span className="text-[#ebd59a] text-[9px] uppercase font-black tracking-widest block mb-1">{t[lang].topHackerModels}</span>
-                                  <span className="text-[10px] text-stone-300 block hover:underline cursor-pointer">{t[lang].accessTopModels}</span>
-                                </div>
-                                <div className="border-t border-[#202021] my-1"></div>
-                                <button
-                                  onClick={() => {
-                                    setCurrentModel("standard");
-                                    setShowModelDropdown(false);
-                                  }}
-                                  className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-[#2b2c2e] transition flex items-center justify-between text-xs text-stone-200"
-                                >
-                                  <span className="font-semibold">{t[lang].modelStandard} <span className="text-[9px] text-[#ebd59a] font-mono ml-1">$$$</span></span>
-                                  {currentModel === "standard" && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />}
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setCurrentModel("pro");
-                                    setShowModelDropdown(false);
-                                  }}
-                                  className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-[#2b2c2e] transition flex items-center justify-between text-xs text-stone-200"
-                                >
-                                  <span className="font-semibold">{t[lang].modelPro} <span className="text-[9px] text-emerald-400 font-mono ml-1">$$$</span></span>
-                                  {currentModel === "pro" && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />}
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setCurrentModel("max");
-                                    setShowModelDropdown(false);
-                                  }}
-                                  className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-[#2b2c2e] transition flex items-center justify-between text-xs text-stone-200"
-                                >
-                                  <span className="font-semibold">{t[lang].modelMax} <span className="text-[9px] text-indigo-400 font-mono ml-1">$$$+</span></span>
-                                  {currentModel === "max" && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />}
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Ask / Agent Toggle Dropdown */}
-                        <div className="relative">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShowAskDropdown(!showAskDropdown);
-                              setShowModelDropdown(false);
-                              setShowPlusDropdown(false);
-                            }}
-                            className={`flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-full border transition select-none leading-none ${
-                              isAgentMode 
-                                ? "bg-emerald-950/40 text-emerald-400 border-emerald-500/20 hover:bg-emerald-950/60" 
-                                : "bg-[#2b2c2e]/60 text-stone-300 hover:text-white border-stone-700/35 hover:bg-[#2d2f31]"
-                            }`}
-                          >
-                            <svg className={`h-3.5 w-3.5 mr-0.5 ${isAgentMode ? "text-emerald-400" : "text-purple-400"}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                              {isAgentMode ? (
-                                <path d="M12 2a10 10 0 1 0 10 10H12V2z" />
-                              ) : (
-                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                              )}
-                            </svg>
-                            <span>{isAgentMode ? (lang === "pt" ? "Criar Sites (Gemini)" : "Create Sites (Gemini)") : (lang === "pt" ? "Criar Sites (DeepSeek)" : "Create Sites (DeepSeek)")}</span>
-                            <ChevronDown className="h-3.5 w-3.5 opacity-65" />
-                          </button>
-
-                          {showAskDropdown && (
-                            <div className="absolute right-0 bottom-full mb-3 bg-[#1e1f20] border border-[#2d2f31] rounded-2xl shadow-2xl py-1.5 w-64 z-50 animate-in fade-in slide-in-from-bottom-2 leading-normal">
-                              <button
-                                onClick={() => {
-                                  setIsAgentMode(false);
-                                  setShowAskDropdown(false);
-                                }}
-                                className="w-full text-left px-4 py-2 hover:bg-[#2b2c2e] transition"
-                              >
-                                <span className="font-bold block text-xs text-stone-200">
-                                  {lang === "pt" ? "Criar Sites (DeepSeek)" : "Create Sites (DeepSeek)"}
-                                </span>
-                                <span className="text-[10px] text-stone-400 leading-snug block mt-0.5">
-                                  {lang === "pt" ? "Gera código de forma direta usando o modelo DeepSeek Coder" : "Generate code directly using the DeepSeek Coder model"}
-                                </span>
-                              </button>
-                              <div className="border-t border-[#2d2f31] my-1.5"></div>
-                              <button
-                                onClick={() => {
-                                  setIsAgentMode(true);
-                                  setShowAskDropdown(false);
-                                }}
-                                className="w-full text-left px-4 py-2 hover:bg-[#2b2c2e] transition"
-                              >
-                                <span className="font-bold block text-xs text-emerald-400 flex items-center gap-1">
-                                  <Sparkles className="h-3.5 w-3.5 shrink-0" /> {lang === "pt" ? "Criar Sites (Gemini)" : "Create Sites (Gemini)"}
-                                </span>
-                                <span className="text-[10px] text-stone-400 leading-snug block mt-0.5">
-                                  {lang === "pt" ? "Gera código de forma direta usando o modelo Google Gemini Pro" : "Generate code directly using the Google Gemini Pro model"}
-                                </span>
-                              </button>
-                            </div>
-                          )}
-                        </div>
-
                         {/* Microphone Button */}
                         <button
                           type="button"
                           onClick={isRecordingSTT ? stopRecordingSingleSTT : startRecordingSingleSTT}
-                          className={`p-1.5 rounded-full transition flex items-center justify-center shrink-0 cursor-pointer ${
+                          className={`p-1.5 sm:p-2 rounded-full transition flex items-center justify-center shrink-0 cursor-pointer ${
                             isRecordingSTT 
                               ? "bg-rose-500 text-white animate-pulse" 
                               : "hover:bg-[#2d2f31] text-stone-300 hover:text-white"
@@ -3777,7 +3696,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                           type="button"
                           onClick={sendChatMessage}
                           disabled={!chatInput.trim()}
-                          className={`p-1.5 rounded-full flex items-center justify-center transition shrink-0 ${
+                          className={`p-1.5 sm:p-2 rounded-full flex items-center justify-center transition shrink-0 ${
                             chatInput.trim() 
                               ? "bg-white text-black hover:bg-stone-200 cursor-pointer" 
                               : "text-stone-600 cursor-not-allowed"
