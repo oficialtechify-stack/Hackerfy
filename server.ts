@@ -573,7 +573,7 @@ Your response MUST be strictly in valid JSON format, respecting exactly the same
   app.post("/api/ask", async (req, res) => {
     let clientLanguage = "en";
     try {
-      const { message, history, language, userProfile } = req.body;
+      const { message, history, language, userProfile, creatorModel } = req.body;
       clientLanguage = language || "en";
       
       let systemInstruction = clientLanguage === "pt"
@@ -667,20 +667,20 @@ Você deve chamar o usuário frequentemente de "${howToCall || name || "Operador
 
       let parsedData = null;
 
-      const isCodeRequest = /código|programar|escrever|criar|corrigir|consertar|bug|função|script|code|program|write|create|fix|repair|function|develop|desenvolva|class|algoritmo/i.test(message || "");
+      const isCodeRequest = creatorModel === "gemini" || creatorModel === "deepseek" || /código|programar|escrever|criar|corrigir|consertar|bug|função|script|code|program|write|create|fix|repair|function|develop|desenvolva|class|algoritmo/i.test(message || "");
       if (isCodeRequest) {
-        console.log("[HackerAI] Code-related request detected. Invoking DeepSeek Coder...");
+        console.log(`[HackerAI] Code request detected. creatorModel: ${creatorModel || "auto"}`);
         const isPt = clientLanguage === "pt";
         
         const deepseekSystem = isPt
-          ? "Você é o DeepSeek Coder, o programador e engenheiro de software de elite. Seu objetivo é criar ou corrigir o código solicitado de forma excelente, funcional, segura e extremamente direta.\n" +
+          ? "Você é o DeepSeek Coder, operando no modo 'Laboratório de Desenvolvimento Seguro'. Seu objetivo é criar ou corrigir o código solicitado de forma excelente, funcional, segura e extremamente direta.\n" +
             "Se o usuário pedir para criar um site ou aplicativo, forneça o código completo, responsivo, bonito, integrado e autônomo (single-file HTML, CSS com Tailwind CSS via CDN, e JavaScript interativo moderno) para que ele possa copiar, colar e rodar imediatamente.\n" +
             "Se o usuário fornecer um código e pedir para consertar, identifique o erro, corrija o código diretamente de forma segura e elegante, e descreva a correção de forma muito breve e objetiva.\n" +
-            "Não inclua longas explicações teóricas ou introduções. Entregue a solução de forma rápida e focada no código funcional."
-          : "You are DeepSeek Coder, the elite software engineer and developer. Your goal is to create or fix the requested code with excellence, functionality, safety, and a highly direct approach.\n" +
+            "Não inclua nenhuma explicação teórica, introduções ou considerações antes ou depois do código. Entregue a solução de forma 100% direta e focada no código funcional, sem introduções ou textos de preâmbulo."
+          : "You are DeepSeek Coder, operating in 'Secure Development Lab' mode. Your goal is to create or fix the requested code with excellence, functionality, safety, and a highly direct approach.\n" +
             "If the user asks to create a website or application, provide the complete, beautiful, responsive, and self-contained code (single-file HTML with Tailwind CSS via CDN, and modern interactive JavaScript) so they can copy and run it instantly.\n" +
             "If the user provides code and asks to fix it, find the bugs, correct the code directly in a secure and elegant manner, and explain the fix extremely briefly.\n" +
-            "Avoid long theoretical preambles. Focus on delivering the functional, polished code directly.";
+            "Do not include any theoretical explanations, introductions, or comments before or after the code. Deliver the solution 100% directly, focused on the functional code, with no preamble or introductory text.";
           
         const deepseekMessages = [
           { role: "system", content: deepseekSystem }
@@ -705,50 +705,75 @@ Você deve chamar o usuário frequentemente de "${howToCall || name || "Operador
         });
         
         let deepseekResponse = "";
-        try {
-          deepseekResponse = await generateWithDeepSeek(deepseekMessages, 0.3);
-        } catch (dsErr: any) {
-          console.warn("[HackerAI] DeepSeek code generation failed, using Gemini as fallback:", dsErr.message || dsErr);
-          if (ai) {
-            try {
-              const chatContentsFallback = [];
-              if (history && Array.isArray(history)) {
-                for (const h of history) {
-                  chatContentsFallback.push({
-                    role: h.role === "user" ? "user" : "model",
-                    parts: [{ text: h.content || "" }]
-                  });
-                }
+        const runGeminiDirectly = creatorModel === "gemini";
+        
+        if (runGeminiDirectly && ai) {
+          console.log("[HackerAI] Direct Gemini code generation active...");
+          try {
+            const chatContentsFallback = [];
+            if (history && Array.isArray(history)) {
+              for (const h of history) {
+                chatContentsFallback.push({
+                  role: h.role === "user" ? "user" : "model",
+                  parts: [{ text: h.content || "" }]
+                });
               }
-              chatContentsFallback.push({
-                role: "user",
-                parts: [{ text: userQuery }]
-              });
-              
-              const geminiRes = await generateContentWithFallback({
-                contents: chatContentsFallback,
-                config: {
-                  systemInstruction: deepseekSystem,
-                  temperature: 0.3
+            }
+            chatContentsFallback.push({
+              role: "user",
+              parts: [{ text: userQuery }]
+            });
+            
+            const geminiRes = await generateContentWithFallback({
+              contents: chatContentsFallback,
+              config: {
+                systemInstruction: deepseekSystem,
+                temperature: 0.3
+              }
+            });
+            deepseekResponse = geminiRes.text || "";
+          } catch (geminiDirectErr: any) {
+            console.error("[HackerAI] Direct Gemini code generation failed:", geminiDirectErr.message || geminiDirectErr);
+          }
+        } else {
+          try {
+            deepseekResponse = await generateWithDeepSeek(deepseekMessages, 0.3);
+          } catch (dsErr: any) {
+            console.warn("[HackerAI] DeepSeek code generation failed, using Gemini as fallback:", dsErr.message || dsErr);
+            if (ai) {
+              try {
+                const chatContentsFallback = [];
+                if (history && Array.isArray(history)) {
+                  for (const h of history) {
+                    chatContentsFallback.push({
+                      role: h.role === "user" ? "user" : "model",
+                      parts: [{ text: h.content || "" }]
+                    });
+                  }
                 }
-              });
-              deepseekResponse = geminiRes.text || "";
-            } catch (geminiFallbackErr: any) {
-              console.error("[HackerAI] Gemini fallback for code generation failed:", geminiFallbackErr.message || geminiFallbackErr);
+                chatContentsFallback.push({
+                  role: "user",
+                  parts: [{ text: userQuery }]
+                });
+                
+                const geminiRes = await generateContentWithFallback({
+                  contents: chatContentsFallback,
+                  config: {
+                    systemInstruction: deepseekSystem,
+                    temperature: 0.3
+                  }
+                });
+                deepseekResponse = geminiRes.text || "";
+              } catch (geminiFallbackErr: any) {
+                console.error("[HackerAI] Gemini fallback for code generation failed:", geminiFallbackErr.message || geminiFallbackErr);
+              }
             }
           }
         }
         
-        let combinedText = "";
-        if (isPt) {
-          combinedText = `Aqui está o código solicitado, Senhor. Foi totalmente estruturado e otimizado para a sua necessidade:
-
-${deepseekResponse || "Não foi possível conectar às APIs para gerar o código. Por favor, verifique se há uma chave válida configurada nos Secrets."}`;
-        } else {
-          combinedText = `Here is your requested code, Sir. Fully optimized and structured for your requirements:
-
-${deepseekResponse || "Could not connect to any API to generate the code. Please verify your Secrets configuration."}`;
-        }
+        const combinedText = deepseekResponse || (isPt 
+          ? "Não foi possível conectar às APIs para gerar o código. Por favor, verifique se há uma chave válida configurada nos Secrets." 
+          : "Could not connect to any API to generate the code. Please verify your Secrets configuration.");
         
         res.json({
           text: combinedText,

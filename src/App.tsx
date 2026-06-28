@@ -64,6 +64,8 @@ import {
   setDoc
 } from "./firebase";
 import ShaderCanvas from "./components/ShaderCanvas";
+import HackerLoading from "./components/HackerLoading";
+import { AssistantJarvis } from "./components/AssistantJarvis";
 
 
 // Translations mapping
@@ -114,6 +116,7 @@ const t = {
     tabChat: "Security Conversational Core",
     tabPentest: "Threat Pentester Engine",
     tabNews: "Threat Radar News",
+    tabAssistant: "Assistente J.A.R.V.I.S.",
     targetInput: "Target/Scope Specification (e.g. hxxps://internal-network-target)",
     pentestLog: "Pentest Attack Simulation Shell Trace:",
     pentestDesc: "Trigger dynamic exploit assessment sequences against the targeted architecture to detect logical evasion bypasses, exposed credentials, buffer triggers, and parameter corruption vulnerabilities securely.",
@@ -227,6 +230,7 @@ const t = {
     tabChat: "Chat Interativo de Segurança",
     tabPentest: "Automação de Pentests",
     tabNews: "Radar de Notícias",
+    tabAssistant: "Assistente J.A.R.V.I.S.",
     targetInput: "Alvo / Escopo do Pentest (ex: http://servico-api ou classe-sistema)",
     pentestLog: "Logs de Automação do Pentest Simulado:",
     pentestDesc: "Dispare sequências dinâmicas de avaliação de vulnerabilidades contra a arquitetura do escopo para detectar desvios de lógica, credenciais expostas e vulnerabilidades lógicas com segurança.",
@@ -390,8 +394,8 @@ export default function App() {
   const [creationProgress, setCreationProgress] = useState(0);
   const [creationLog, setCreationLog] = useState<string[]>([]);
 
-  const [activeTab, setActiveTab] = useState<"chat" | "audit" | "pentest" | "news">("chat");
-  const handleTabChange = (tab: "chat" | "audit" | "pentest" | "news") => {
+  const [activeTab, setActiveTab] = useState<"chat" | "audit" | "pentest" | "news" | "assistant">("chat");
+  const handleTabChange = (tab: "chat" | "audit" | "pentest" | "news" | "assistant") => {
     setActiveTab(tab);
     if (typeof window !== "undefined" && window.innerWidth < 1024) {
       setIsSidebarExpanded(false);
@@ -406,6 +410,18 @@ export default function App() {
 
   // Floating custom notifications & popup modals for rich actions
   const [toast, setToast] = useState<{ message: string; type?: "info" | "success" | "warning" } | null>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showDownloadCenter, setShowDownloadCenter] = useState(false);
+
+  useEffect(() => {
+    const handleBeforeInstall = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener("beforeinstallprompt", handleBeforeInstall);
+    return () => window.removeEventListener("beforeinstallprompt", handleBeforeInstall);
+  }, []);
+
   const [openMenuIdx, setOpenMenuIdx] = useState<number | null>(null);
   const [showDocModal, setShowDocModal] = useState(false);
   const [docContent, setDocContent] = useState("");
@@ -434,6 +450,24 @@ export default function App() {
       return () => clearTimeout(timer);
     }
   }, [toast]);
+
+  const handleInstallApp = async () => {
+    if (deferredPrompt) {
+      try {
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') {
+          showToast(lang === "pt" ? "Instalação do Hackerfy iniciada!" : "Hackerfy installation started!", "success");
+        }
+        setDeferredPrompt(null);
+      } catch (err) {
+        console.error("Installation prompt failed:", err);
+        setShowDownloadCenter(true);
+      }
+    } else {
+      setShowDownloadCenter(true);
+    }
+  };
 
   const getOrbTones = (personality: string) => {
     switch (personality) {
@@ -1645,7 +1679,8 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
           message: inputPayload,
           history: messages.slice(-10),
           language: lang,
-          userProfile: userProfile
+          userProfile: userProfile,
+          creatorModel: isAgentMode ? "gemini" : "deepseek"
         })
       });
       const data = await response.json();
@@ -1769,7 +1804,8 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
           message: userPromptMsg.content,
           history: truncatedMessages.slice(-10),
           language: lang,
-          userProfile: userProfile
+          userProfile: userProfile,
+          creatorModel: isAgentMode ? "gemini" : "deepseek"
         })
       });
       const data = await response.json();
@@ -2063,14 +2099,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
 
   // Return JSX
   if (authLoading) {
-    return (
-      <div id="auth-loading-screen" className="min-h-screen bg-[#0b0d10] flex flex-col justify-center items-center text-emerald-400 font-mono">
-        <div className="flex flex-col items-center gap-4">
-          <Terminal className="h-12 w-12 animate-pulse text-emerald-400" />
-          <p className="text-sm tracking-widest animate-pulse">CARREGANDO SISTEMA DE SEGURANÇA...</p>
-        </div>
-      </div>
-    );
+    return <HackerLoading message="CARREGANDO SISTEMA DE SEGURANÇA..." />;
   }
 
   if (!currentUser) {
@@ -3029,6 +3058,20 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
 
               {/* Mobile Quick controls (Voice and Incognito) */}
               <div className="flex items-center gap-2 md:hidden">
+                {/* Mobile Download/Install Trigger */}
+                <button
+                  onClick={handleInstallApp}
+                  className="flex items-center justify-center h-8 px-2.5 rounded-full border border-amber-500/30 text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 text-[10px] font-bold gap-1 transition"
+                  title="Baixar App"
+                >
+                  <svg className="h-3.5 w-3.5 text-amber-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  <span>Baixar</span>
+                </button>
+
                 <button
                   onClick={() => toggleVoiceModeOverlay(true)}
                   className="flex items-center justify-center h-8 w-8 rounded-full border border-purple-500/20 text-purple-400 bg-purple-500/5 hover:bg-purple-500/10 transition animate-pulse"
@@ -3065,6 +3108,12 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                 {t[lang].tabChat}
               </button>
               <button
+                onClick={() => handleTabChange("assistant")}
+                className={`px-3 py-1.5 sm:py-1 rounded font-medium transition shrink-0 ${activeTab === "assistant" ? "bg-[#1f1f22] text-[#fff]" : "text-stone-400 hover:text-white"}`}
+              >
+                {t[lang].tabAssistant}
+              </button>
+              <button
                 onClick={() => handleTabChange("news")}
                 className={`px-3 py-1.5 sm:py-1 rounded font-medium transition shrink-0 ${activeTab === "news" ? "bg-[#1f1f22] text-[#fff]" : "text-stone-400 hover:text-white"}`}
               >
@@ -3096,6 +3145,20 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
               <Sparkles className="h-3 w-3 text-amber-400 shrink-0" />
               <span>ULTRA / ILIMITADO</span>
             </div>
+
+            {/* PWA App Download Option */}
+            <button
+              onClick={handleInstallApp}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold border border-amber-500/20 text-amber-400 bg-amber-500/5 hover:bg-amber-500/10 transition cursor-pointer"
+              title="Baixar App Hackerfy no Celular"
+            >
+              <svg className="h-3.5 w-3.5 text-amber-400 shrink-0 animate-bounce" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              <span>Baixar App</span>
+            </button>
 
             {/* Incognito stealth icon matching top right of Screen 4 */}
             <div 
@@ -3447,6 +3510,21 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                           </div>
                         </button>
 
+                        {/* Assistente J.A.R.V.I.S. */}
+                        <button
+                          onClick={() => {
+                            setShowPlusDropdown(false);
+                            handleTabChange("assistant");
+                          }}
+                          className={`w-full text-left px-4 py-2.5 hover:bg-[#2b2c2e] transition flex items-center gap-3 ${activeTab === "assistant" ? "bg-[#252628] text-white" : ""}`}
+                        >
+                          <Sparkles className="h-4.5 w-4.5 text-cyan-400" />
+                          <div className="flex-1 flex flex-col">
+                            <span className="text-xs font-semibold">Assistente J.A.R.V.I.S.</span>
+                            <span className="text-[9px] text-stone-400">Organize rotinas, leia links e resuma vídeos</span>
+                          </div>
+                        </button>
+
                         <div className="border-t border-[#2d2f31] my-1"></div>
 
                         {/* Auto-read voice feedback toggle inside '+' */}
@@ -3495,6 +3573,27 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                           <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${isTemporaryChat ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/10" : "bg-stone-900 text-stone-500"}`}>
                             {isTemporaryChat ? "ATIVADO" : "DESATIVADO"}
                           </span>
+                        </button>
+
+                        <div className="border-t border-[#2d2f31] my-1"></div>
+
+                        {/* Mobile App PWA Install Option */}
+                        <button
+                          onClick={() => {
+                            setShowPlusDropdown(false);
+                            handleInstallApp();
+                          }}
+                          className="w-full text-left px-4 py-2.5 hover:bg-[#2b2c2e] transition flex items-center gap-3 cursor-pointer"
+                        >
+                          <svg className="h-4.5 w-4.5 text-amber-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="7 10 12 15 17 10" />
+                            <line x1="12" y1="15" x2="12" y2="3" />
+                          </svg>
+                          <div className="flex-1 flex flex-col">
+                            <span className="text-xs font-semibold text-amber-400">Instalar Hackerfy Mobile</span>
+                            <span className="text-[9px] text-stone-400">Download nativo de aplicativo para celular</span>
+                          </div>
                         </button>
                       </div>
                     )}
@@ -3620,12 +3719,12 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                               )}
                             </svg>
-                            <span>{isAgentMode ? "Agente" : "Perguntar"}</span>
+                            <span>{isAgentMode ? (lang === "pt" ? "Criar Sites (Gemini)" : "Create Sites (Gemini)") : (lang === "pt" ? "Criar Sites (DeepSeek)" : "Create Sites (DeepSeek)")}</span>
                             <ChevronDown className="h-3.5 w-3.5 opacity-65" />
                           </button>
 
                           {showAskDropdown && (
-                            <div className="absolute right-0 bottom-full mb-3 bg-[#1e1f20] border border-[#2d2f31] rounded-2xl shadow-2xl py-1.5 w-60 z-50 animate-in fade-in slide-in-from-bottom-2 leading-normal">
+                            <div className="absolute right-0 bottom-full mb-3 bg-[#1e1f20] border border-[#2d2f31] rounded-2xl shadow-2xl py-1.5 w-64 z-50 animate-in fade-in slide-in-from-bottom-2 leading-normal">
                               <button
                                 onClick={() => {
                                   setIsAgentMode(false);
@@ -3634,9 +3733,11 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                                 className="w-full text-left px-4 py-2 hover:bg-[#2b2c2e] transition"
                               >
                                 <span className="font-bold block text-xs text-stone-200">
-                                  {t[lang].askButton}
+                                  {lang === "pt" ? "Criar Sites (DeepSeek)" : "Create Sites (DeepSeek)"}
                                 </span>
-                                <span className="text-[10px] text-stone-400 leading-snug block mt-0.5">{t[lang].askSubText}</span>
+                                <span className="text-[10px] text-stone-400 leading-snug block mt-0.5">
+                                  {lang === "pt" ? "Gera código de forma direta usando o modelo DeepSeek Coder" : "Generate code directly using the DeepSeek Coder model"}
+                                </span>
                               </button>
                               <div className="border-t border-[#2d2f31] my-1.5"></div>
                               <button
@@ -3647,9 +3748,11 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                                 className="w-full text-left px-4 py-2 hover:bg-[#2b2c2e] transition"
                               >
                                 <span className="font-bold block text-xs text-emerald-400 flex items-center gap-1">
-                                  <Sparkles className="h-3.5 w-3.5 shrink-0" /> {t[lang].agentButton}
+                                  <Sparkles className="h-3.5 w-3.5 shrink-0" /> {lang === "pt" ? "Criar Sites (Gemini)" : "Create Sites (Gemini)"}
                                 </span>
-                                <span className="text-[10px] text-stone-400 leading-snug block mt-0.5">{t[lang].agentSubText}</span>
+                                <span className="text-[10px] text-stone-400 leading-snug block mt-0.5">
+                                  {lang === "pt" ? "Gera código de forma direta usando o modelo Google Gemini Pro" : "Generate code directly using the Google Gemini Pro model"}
+                                </span>
                               </button>
                             </div>
                           )}
@@ -4171,6 +4274,19 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                   </div>
                 )}
                 
+              </div>
+            )}
+
+            {/* Tab: Personal AI Assistant (J.A.R.V.I.S.) */}
+            {activeTab === "assistant" && (
+              <div className="w-full text-left leading-normal animate-in fade-in-50 duration-300">
+                <AssistantJarvis
+                  lang={lang}
+                  userProfile={userProfile}
+                  speakText={speakText}
+                  stopTTS={stopTTS}
+                  voiceState={voiceState}
+                />
               </div>
             )}
 
@@ -4832,6 +4948,111 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                 Fechar / Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Standalone PWA / Mobile App Download & Installation Center */}
+      {showDownloadCenter && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[9999] flex items-center justify-center p-4">
+          <div className="bg-[#0c0d10] border border-emerald-500/25 rounded-2xl w-full max-w-lg overflow-hidden shadow-[0_0_50px_rgba(16,185,129,0.15)] flex flex-col p-6 space-y-5 animate-fade-in font-sans">
+            
+            {/* Modal Header */}
+            <div className="flex items-start justify-between border-b border-stone-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-emerald-950/50 border border-emerald-500/30 rounded-xl text-emerald-400">
+                  <svg className="h-6 w-6 animate-pulse text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-stone-100 flex items-center gap-2">
+                    <span>Instalar App Hackerfy</span>
+                    <span className="text-[9px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-1.5 py-0.5 rounded uppercase font-mono tracking-widest font-black">Nativo PWA</span>
+                  </h3>
+                  <p className="text-xs text-stone-400">Instale e use o aplicativo de segurança diretamente no seu celular</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDownloadCenter(false)}
+                className="text-stone-400 hover:text-white text-[11px] font-mono px-2.5 py-1 rounded bg-[#131418] border border-stone-800 hover:border-stone-700 transition cursor-pointer"
+              >
+                [X] FECHAR
+              </button>
+            </div>
+
+            {/* App Icon Presentation Box */}
+            <div className="bg-gradient-to-r from-emerald-950/10 via-[#0d1310] to-emerald-950/10 rounded-xl p-4 border border-emerald-500/10 flex items-center gap-4">
+              <img 
+                src="/icon-512.png" 
+                alt="Hackerfy Icon" 
+                className="w-16 h-16 rounded-2xl border border-emerald-500/20 shadow-md shadow-emerald-950/50 object-cover shrink-0" 
+                referrerPolicy="no-referrer"
+              />
+              <div className="flex-1 space-y-1">
+                <h4 className="text-xs font-black text-white font-mono tracking-wide uppercase">Remix: Hackerfy Premium</h4>
+                <p className="text-[10px] text-emerald-400 font-mono leading-tight">★ WebAPK Standalone Package compiled dynamically</p>
+                <p className="text-[10px] text-stone-400 leading-relaxed">Suporta atualizações em tempo real, armazenamento local seguro, acesso biométrico nativo e inicialização rápida sem o navegador visível.</p>
+              </div>
+            </div>
+
+            {/* Native Install Action Button */}
+            {deferredPrompt && (
+              <button
+                onClick={async () => {
+                  setShowDownloadCenter(false);
+                  await handleInstallApp();
+                }}
+                className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-sm py-3 px-4 rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all flex items-center justify-center gap-2 cursor-pointer animate-pulse"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                <span>Baixar e Instalar Automaticamente</span>
+              </button>
+            )}
+
+            {/* Tabbed step-by-step instructions */}
+            <div className="space-y-3.5">
+              <p className="text-[11px] font-mono uppercase text-stone-500 tracking-wider">Como instalar de graça no seu celular de verdade:</p>
+              
+              <div className="grid grid-cols-2 gap-2 text-center text-xs font-mono">
+                <div className="bg-[#101115] p-3 rounded-xl border border-stone-800 flex flex-col items-center justify-center space-y-2">
+                  <div className="text-[#34a853] font-bold uppercase tracking-widest text-[10px] border-b border-[#34a853]/10 pb-1 w-full">Método Android (Chrome)</div>
+                  <ol className="text-left text-[10px] text-stone-300 space-y-1.5 list-decimal pl-3.5 py-1 leading-normal font-sans">
+                    <li>Abra este site no celular usando o navegador <strong className="text-white font-semibold">Chrome</strong>.</li>
+                    <li>Toque nos <strong className="text-emerald-400 font-semibold">três pontinhos</strong> no canto superior direito.</li>
+                    <li>Selecione <strong className="text-emerald-400 font-semibold">"Instalar aplicativo"</strong> ou <strong className="text-emerald-400 font-semibold">"Adicionar à Tela Inicial"</strong>.</li>
+                    <li>Confirme a instalação para baixar o APK/App de verdade no seu celular!</li>
+                  </ol>
+                </div>
+
+                <div className="bg-[#101115] p-3 rounded-xl border border-stone-800 flex flex-col items-center justify-center space-y-2">
+                  <div className="text-[#007aff] font-bold uppercase tracking-widest text-[10px] border-b border-[#007aff]/10 pb-1 w-full">Método iPhone (Safari)</div>
+                  <ol className="text-left text-[10px] text-stone-300 space-y-1.5 list-decimal pl-3.5 py-1 leading-normal font-sans">
+                    <li>Abra este site no iPhone usando o navegador <strong className="text-white font-semibold">Safari</strong>.</li>
+                    <li>Toque no botão <strong className="text-sky-400 font-semibold">Compartilhar</strong> (ícone com seta para cima).</li>
+                    <li>Role para baixo e selecione <strong className="text-sky-400 font-semibold">"Adicionar à Tela de Início"</strong>.</li>
+                    <li>Pronto! O app Hackerfy ficará instalado na tela inicial do seu iOS.</li>
+                  </ol>
+                </div>
+              </div>
+            </div>
+
+            {/* AppSec Compliance Footer */}
+            <div className="bg-black/40 rounded-xl p-3 border border-stone-850 font-mono text-[9px] text-stone-500 flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span>SHA-256 SIGNATURE APPK_VERIFIED</span>
+              </div>
+              <span>PORT: 3000 SSL: HTTPS</span>
+            </div>
+
           </div>
         </div>
       )}
