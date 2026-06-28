@@ -64,7 +64,6 @@ import {
   setDoc
 } from "./firebase";
 import ShaderCanvas from "./components/ShaderCanvas";
-import HackerLoading from "./components/HackerLoading";
 import { AssistantJarvis } from "./components/AssistantJarvis";
 
 
@@ -77,16 +76,16 @@ const t = {
     askButton: "Ask",
     agentButton: "Agent",
     askSubText: "Ask questions about hackers, pentesting, vulnerabilities...",
-    agentSubText: "HackerAI Agent - Deep Realtime Security Auditor & Code Remediator",
-    disclaimer: "By messaging HackerAl, you agree to our Terms and have read our Privacy Policy · Security & Trust",
-    footerText: "HackerAI. All rights reserved.",
+    agentSubText: "Hackerfy Agent - Deep Realtime Security Auditor & Code Remediator",
+    disclaimer: "By messaging Hackerfy, you agree to our Terms and have read our Privacy Policy · Security & Trust",
+    footerText: "Hackerfy. All rights reserved.",
     signText: "Sign in",
     starter: "Get started",
     upgrade: "Upgrade plan",
     models: "Models",
-    modelStandard: "HackerAI Standard",
-    modelPro: "HackerAI Pro",
-    modelMax: "HackerAI Max",
+    modelStandard: "Hackerfy Standard",
+    modelPro: "Hackerfy Pro",
+    modelMax: "Hackerfy Max",
     free: "Free",
     monthly: "Monthly",
     yearly: "Yearly",
@@ -132,7 +131,7 @@ const t = {
     upgradeToPro: "Upgrade to Pro",
     unlockMore: "Unlock more features",
     tempChatTitle: "Temporary Chat",
-    tempChatDesc: "This chat won't appear in history, use or update HackerAI's memory, or be used to train models. This chat will be deleted when you refresh the page.",
+    tempChatDesc: "This chat won't appear in history, use or update Hackerfy's memory, or be used to train models. This chat will be deleted when you refresh the page.",
     topHackerModels: "Top Hacker AI Models",
     accessTopModels: "Get access to the top AI models ›",
     upgradeToUnlock: "Upgrade your plan to unlock",
@@ -146,7 +145,7 @@ const t = {
     termsOfService: "Terms of Service",
     privacyPolicy: "Privacy Policy",
     advisoryDisclaimer: "Advisory Disclaimer",
-    freeSubtitle: "Try HackerAI",
+    freeSubtitle: "Try Hackerfy",
     freeFeature1: "Access to basic AI model",
     freeFeature2: "Limited responses",
     freeFeature3: "Agent mode with local sandbox",
@@ -166,14 +165,14 @@ const t = {
     saveDiscount: "Save 17%",
     liveAttackSim: "Live Attack Simulation",
     simulatedExploitPoc: "Simulated Exploit Proof Of Concept:",
-    exploitPocText: "HackerAI successfully demonstrated parameter state control escape. Real-time recommendation: ensure dynamic queries utilize explicit prepared statement validation layers. Ensure authentication tokens employ cryptographic digital sign protection parameters.",
+    exploitPocText: "Hackerfy successfully demonstrated parameter state control escape. Real-time recommendation: ensure dynamic queries utilize explicit prepared statement validation layers. Ensure authentication tokens employ cryptographic digital sign protection parameters.",
     clientAuditor: "Client Auditor",
-    hackerAIIntelligence: "HackerAI Intelligence",
+    hackerfyIntelligence: "Hackerfy Intelligence",
     analyzingModels: "Analyzing, checking security models...",
     attachingNotAllowed: "Attach files (Pro only)",
     voiceModeTitle: "Advanced Voice Mode",
     voiceActiveListening: "Continuous Conversation (Active Listening)",
-    voiceModeDesc: "Biometric and acoustic conversational sandbox. HackerAI listens and speaks dynamically using real-time Text-to-Speech models.",
+    voiceModeDesc: "Biometric and acoustic conversational sandbox. Hackerfy listens and speaks dynamically using real-time Text-to-Speech models.",
     voiceMuted: "Muted",
     voiceListening: "Listening (Active)...",
     voiceProcessing: "Analyzing threat vectors...",
@@ -191,16 +190,16 @@ const t = {
     askButton: "Perguntar",
     agentButton: "Agente",
     askSubText: "Faça suas perguntas sobre hackers, segurança e pentests",
-    agentSubText: "HackerAI Agent - Auditor de Segurança em Tempo Real Profundo e Remediador de Código",
-    disclaimer: "Ao enviar mensagens para o HackerAI, você concorda com nossos Termos e leu nossa Política de Privacidade · Segurança e Confiança",
-    footerText: "HackerAI. Todos os direitos reservados.",
+    agentSubText: "Hackerfy Agent - Auditor de Segurança em Tempo Real Profundo e Remediador de Código",
+    disclaimer: "Ao enviar mensagens para o Hackerfy, você concorda com nossos Termos e leu nossa Política de Privacidade · Segurança e Confiança",
+    footerText: "Hackerfy. Todos os direitos reservados.",
     signText: "Assine em",
     starter: "Começar",
     upgrade: "Atualizar plano",
     models: "Preços",
-    modelStandard: "HackerAI Standard",
-    modelPro: "HackerAI Pro",
-    modelMax: "HackerAI Max",
+    modelStandard: "Hackerfy Standard",
+    modelPro: "Hackerfy Pro",
+    modelMax: "Hackerfy Max",
     free: "Grátis",
     monthly: "Mensal",
     yearly: "Anual",
@@ -260,7 +259,7 @@ const t = {
     termsOfService: "Termos de Serviço",
     privacyPolicy: "Política de Privacidade",
     advisoryDisclaimer: "Aviso de Isenção",
-    freeSubtitle: "Experimente o HackerAI",
+    freeSubtitle: "Experimente o Hackerfy",
     freeFeature1: "Acesso ao modelo básico de IA",
     freeFeature2: "Respostas limitadas",
     freeFeature3: "Modo Agente com sandbox local",
@@ -274,9 +273,9 @@ const t = {
     voiceSpeaking: "Falando (Sintetizador)...",
     voicePressButton: "Iniciar Conexão por Voz",
     voiceClose: "Encerrar Canal de Voz",
-    sttStart: "Iniciando captura de som...",
-    sttStop: "Transcrevendo voz por IA...",
-    micRecording: "Gravando áudio...",
+    sttStart: "Assegurando segmento de áudio...",
+    sttStop: "Transcrevendo segmento de áudio...",
+    micRecording: "Gravando log seguro...",
     proFeature1: "Acesso aos melhores modelos de IA para pentesting",
     proFeature2: "Limites de contexto expandidos",
     proFeature3: "Uploads ilimitados de arquivos fonte",
@@ -292,9 +291,9 @@ const t = {
     saveDiscount: "Economize 17%",
     liveAttackSim: "Simulação de Ataque em Tempo Real",
     simulatedExploitPoc: "Prova de Conceito de Exploit Simulado:",
-    exploitPocText: "O HackerAI demonstrou com sucesso o escape do controle de estado dos parâmetros. Recomendação em tempo real: garanta que as consultas dinâmicas utilizem camadas de validação explícitas de prepared statements. Certifique-se de que os tokens de autenticação empreguem parâmetros de proteção de assinatura digital criptográfica.",
+    exploitPocText: "O Hackerfy demonstrou com sucesso o escape do controle de estado dos parâmetros. Recomendação em tempo real: garanta que as consultas dinâmicas utilizem camadas de validação explícitas de prepared statements. Certifique-se de que os tokens de autenticação empreguem parâmetros de proteção de assinatura digital criptográfica.",
     clientAuditor: "Auditor do Cliente",
-    hackerAIIntelligence: "Inteligência HackerAI",
+    hackerfyIntelligence: "Inteligência Hackerfy",
     analyzingModels: "Analisando, verificando modelos de segurança...",
     attachingNotAllowed: "Anexar arquivos (Apenas Pro)"
   }
@@ -427,7 +426,7 @@ export default function App() {
   const [docContent, setDocContent] = useState("");
   const [showGmailModal, setShowGmailModal] = useState(false);
   const [gmailTo, setGmailTo] = useState("marcos@empresa.com");
-  const [gmailSubject, setGmailSubject] = useState("Draft from HackerAI");
+  const [gmailSubject, setGmailSubject] = useState("Draft from Hackerfy");
   const [gmailBody, setGmailBody] = useState("");
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [detailsData, setDetailsData] = useState<any>(null);
@@ -583,6 +582,7 @@ export default function App() {
   const recognitionRef = useRef<any>(null);
   const sttRecognitionRef = useRef<any>(null);
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
+  const messageTimestampsRef = useRef<number[]>([]);
 
   // Initialize Speech recognition for "Conversa Contínua (Escuta Ativa)"
   const startSpeechRecognition = () => {
@@ -1100,7 +1100,7 @@ export default function App() {
 
   // Gemini-like Conversations State
   const [conversations, setConversations] = useState<ChatSession[]>(() => {
-    const saved = localStorage.getItem("hackerai_conversations");
+    const saved = localStorage.getItem("hackerfy_conversations");
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -1118,7 +1118,7 @@ export default function App() {
       messages: [
         {
           role: "assistant",
-          content: "Olá! Eu sou o HackerAI. Como posso te auxiliar com seus testes ou correção de vulnerabilidades hoje?",
+          content: "Olá! Eu sou o Hackerfy. Como posso te auxiliar com seus testes ou correção de vulnerabilidades hoje?",
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
         }
       ],
@@ -1127,7 +1127,7 @@ export default function App() {
   });
 
   const [activeChatId, setActiveChatId] = useState<string>(() => {
-    const savedActive = localStorage.getItem("hackerai_active_chat_id");
+    const savedActive = localStorage.getItem("hackerfy_active_chat_id");
     if (savedActive) return savedActive;
     return conversations[0]?.id || "default";
   });
@@ -1144,9 +1144,9 @@ export default function App() {
 
   // Core Chat State (derived/synced)
   const [messages, setMessages] = useState<Message[]>(() => {
-    const savedActive = localStorage.getItem("hackerai_active_chat_id");
+    const savedActive = localStorage.getItem("hackerfy_active_chat_id");
     if (savedActive) {
-      const saved = localStorage.getItem("hackerai_conversations");
+      const saved = localStorage.getItem("hackerfy_conversations");
       if (saved) {
         try {
           const parsed = JSON.parse(saved) as ChatSession[];
@@ -1157,13 +1157,14 @@ export default function App() {
     }
     return [{
       role: "assistant",
-      content: "Olá! Eu sou o HackerAI. Como posso te auxiliar com seus testes ou correção de vulnerabilidades hoje?",
+      content: "Olá! Eu sou o Hackerfy. Como posso te auxiliar com seus testes ou correção de vulnerabilidades hoje?",
       timestamp: "08:30"
     }];
   });
 
   const [chatInput, setChatInput] = useState("");
   const [isReplying, setIsReplying] = useState(false);
+  const isGeneratingOrSpeaking = isReplying || voiceState === "speaking" || voiceState === "thinking";
 
   // Save chats on updates
   useEffect(() => {
@@ -1184,7 +1185,7 @@ export default function App() {
           }
           return c;
         });
-        localStorage.setItem("hackerai_conversations", JSON.stringify(updated));
+        localStorage.setItem("hackerfy_conversations", JSON.stringify(updated));
         return updated;
       });
     }
@@ -1192,7 +1193,7 @@ export default function App() {
 
   useEffect(() => {
     if (!isTemporaryChat) {
-      localStorage.setItem("hackerai_active_chat_id", activeChatId);
+      localStorage.setItem("hackerfy_active_chat_id", activeChatId);
     }
   }, [activeChatId, isTemporaryChat]);
 
@@ -1242,8 +1243,8 @@ export default function App() {
           try {
             const savedProfile = localStorage.getItem("hackerfy_profile");
             const savedOnboarded = localStorage.getItem("hackerfy_onboarded") === "true";
-            const savedConversations = localStorage.getItem("hackerai_conversations");
-            const savedActiveId = localStorage.getItem("hackerai_active_chat_id");
+            const savedConversations = localStorage.getItem("hackerfy_conversations");
+            const savedActiveId = localStorage.getItem("hackerfy_active_chat_id");
             
             if (savedProfile) {
               try {
@@ -1438,7 +1439,7 @@ export default function App() {
       messages: [
         {
           role: "assistant",
-          content: "Olá! Eu sou o HackerAI. Como posso te auxiliar com seus testes ou correção de vulnerabilidades hoje?",
+          content: "Olá! Eu sou o Hackerfy. Como posso te auxiliar com seus testes ou correção de vulnerabilidades hoje?",
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }
       ],
@@ -1456,85 +1457,46 @@ export default function App() {
   };
 
   const handleCreatePlatform = () => {
-    setIsCreatingPlatform(true);
-    setCreationProgress(0);
-    setCreationLog(["[SYS] Estabelecendo túnel de conexão seguro com HackerAI Core..."]);
-
-    const logs = [
-      "[SYS] Inicializando sandbox isolada de simulações corporativas...",
-      "[SYS] Carregando heurística baseada no seu perfil customizado...",
-      "[SYS] Alinhando compiladores de nós de Árvore de Sintaxe Abstrata (AST)...",
-      "[SYS] Sincronizando repositórios de ameaças CVE do Mitre & OWASP...",
-      "[SYS] Protegendo buffers de simulação ofensiva de Red Teaming...",
-      "[SYS] Selando container de testes e injetando regras de conformidade...",
-      "[SYS] Workspace individual seguro estabelecido com sucesso!"
-    ];
-
-    let currentLogIdx = 0;
+    // Complete onboarding instantly
+    const finalProfile = {
+      name: onboardName.trim() || "Operador",
+      age: onboardAge.trim() || "N/A",
+      profileType: onboardType,
+      howToCall: onboardHowToCall.trim() || onboardName.trim() || "Operador",
+      goal: onboardGoals.length > 0 ? onboardGoals.join(", ") : "Auditoria de segurança e testes preventivos"
+    };
     
-    // Simulate compilation steps
-    const interval = setInterval(() => {
-      setCreationProgress(prev => {
-        const next = prev + 12;
-        if (next >= 100) {
-          clearInterval(interval);
-          
-          // Complete onboarding
-          const finalProfile = {
-            name: onboardName.trim() || "Operador",
-            age: onboardAge.trim() || "N/A",
-            profileType: onboardType,
-            howToCall: onboardHowToCall.trim() || onboardName.trim() || "Operador",
-            goal: onboardGoals.length > 0 ? onboardGoals.join(", ") : "Auditoria de segurança e testes preventivos"
-          };
-          
-          setUserProfile(finalProfile);
-          localStorage.setItem("hackerfy_profile", JSON.stringify(finalProfile));
-          localStorage.setItem("hackerfy_onboarded", "true");
-          
-          // Let's create a customized welcome message from AI
-          const welcomeMsg = `Olá, ${finalProfile.howToCall}! Seja muito bem-vindo ao seu workspace individual Hackerfy.
+    setUserProfile(finalProfile);
+    localStorage.setItem("hackerfy_profile", JSON.stringify(finalProfile));
+    localStorage.setItem("hackerfy_onboarded", "true");
+    
+    // Let's create a customized welcome message from AI
+    const welcomeMsg = `Olá, ${finalProfile.howToCall}! Seja muito bem-vindo ao seu workspace individual Hackerfy.
 
 Analisei seu perfil e vi que você tem ${finalProfile.age} anos, está operando como um perfil ${finalProfile.profileType === "empresa" ? "Empresarial" : "Individual"} e seu objetivo primário aqui é "${finalProfile.goal}".
 
 Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo para dar suporte a esse escopo. Como posso te apoiar com suas análises de segurança, SAST de código-fonte ou testes de penetração preventiva hoje?`;
 
-          const defaultId = `chat-${Date.now()}`;
-          const initialChat: ChatSession = {
-            id: defaultId,
-            title: "Configuração do Sistema",
-            messages: [
-              {
-                role: "assistant",
-                content: welcomeMsg,
-                timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-              }
-            ],
-            timestamp: new Date().toLocaleDateString()
-          };
-
-          setConversations([initialChat]);
-          setActiveChatId(defaultId);
-          setMessages(initialChat.messages);
-          setIsTemporaryChat(false);
-
-          setTimeout(() => {
-            setIsOnboarded(true);
-            setIsCreatingPlatform(false);
-          }, 500);
-
-          return 100;
+    const defaultId = `chat-${Date.now()}`;
+    const initialChat: ChatSession = {
+      id: defaultId,
+      title: "Configuração do Sistema",
+      messages: [
+        {
+          role: "assistant",
+          content: welcomeMsg,
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
         }
-        
-        // Add log message intermittently
-        if (currentLogIdx < logs.length && Math.random() > 0.4) {
-          setCreationLog(logPrev => [...logPrev, logs[currentLogIdx]]);
-          currentLogIdx++;
-        }
-        
-        return next;
-      });
-    }, 250);
+      ],
+      timestamp: new Date().toLocaleDateString()
+    };
+
+    setConversations([initialChat]);
+    setActiveChatId(defaultId);
+    setMessages(initialChat.messages);
+    setIsTemporaryChat(false);
+    setIsOnboarded(true);
+    setIsCreatingPlatform(false);
   };
 
   const handleDeleteConversation = (idIndex: string) => {
@@ -1553,7 +1515,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
           messages: [
             {
               role: "assistant",
-              content: "Olá! Eu sou o HackerAI. Como posso te auxiliar com seus testes ou correção de vulnerabilidades hoje?",
+              content: "Olá! Eu sou o Hackerfy. Como posso te auxiliar com seus testes ou correção de vulnerabilidades hoje?",
               timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             }
           ],
@@ -1648,7 +1610,30 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
 
   // Send Conversational Assistant questions
   const sendChatMessage = async () => {
+    if (isGeneratingOrSpeaking) {
+      showToast(
+        lang === "pt" 
+          ? "Aguarde a resposta anterior ser concluída." 
+          : "Please wait for the previous response to complete.", 
+        "warning"
+      );
+      return;
+    }
     if (!chatInput.trim()) return;
+
+    // Rate Limiting: max 5 messages per 60 seconds
+    const now = Date.now();
+    const activeTimestamps = messageTimestampsRef.current.filter(ts => now - ts < 60000);
+    if (activeTimestamps.length >= 5) {
+      showToast(
+        lang === "pt"
+          ? "Aguarde alguns segundos para enviar a próxima mensagem (limite de 5 mensagens/minuto)."
+          : "Please wait a few seconds before sending the next message (limit of 5 messages/minute).",
+        "warning"
+      );
+      return;
+    }
+    messageTimestampsRef.current = [...activeTimestamps, now];
 
     // Pre-warm Speech Synthesis synchronously to unlock browser audio restrictions on modern mobile & iframes
     if (typeof window !== "undefined" && window.speechSynthesis) {
@@ -1895,7 +1880,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
   const handleCreateGmailDraft = (content: string) => {
     setOpenMenuIdx(null);
     setGmailBody(content);
-    setGmailSubject(lang === "pt" ? "Relatório de Auditoria de Código - HackerAI" : "Code Audit Report - HackerAI");
+    setGmailSubject(lang === "pt" ? "Relatório de Auditoria de Código - Hackerfy" : "Code Audit Report - Hackerfy");
     setShowGmailModal(true);
   };
 
@@ -1906,7 +1891,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
       const element = document.createElement("a");
       const file = new Blob([content], { type: 'text/plain' });
       element.href = URL.createObjectURL(file);
-      element.download = "hackerai_workspace.html";
+      element.download = "hackerfy_workspace.html";
       document.body.appendChild(element);
       element.click();
       document.body.removeChild(element);
@@ -2084,14 +2069,14 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
       setConversations([]);
       setMessages([{
         role: "assistant",
-        content: "Olá! Eu sou o HackerAI. Como posso te auxiliar com seus testes ou correção de vulnerabilidades hoje?",
+        content: "Olá! Eu sou o Hackerfy. Como posso te auxiliar com seus testes ou correção de vulnerabilidades hoje?",
         timestamp: "08:30"
       }]);
       setActiveChatId("default");
       localStorage.removeItem("hackerfy_onboarded");
       localStorage.removeItem("hackerfy_profile");
-      localStorage.removeItem("hackerai_conversations");
-      localStorage.removeItem("hackerai_active_chat_id");
+      localStorage.removeItem("hackerfy_conversations");
+      localStorage.removeItem("hackerfy_active_chat_id");
     } catch (err) {
       console.error("Erro ao deslogar:", err);
     }
@@ -2099,7 +2084,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
 
   // Return JSX
   if (authLoading) {
-    return <HackerLoading message="CARREGANDO SISTEMA DE SEGURANÇA..." />;
+    return <div className="min-h-screen bg-[#0b0c0e]" />;
   }
 
   if (!currentUser) {
@@ -2405,7 +2390,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
   }
 
   return (
-    <div className="h-screen max-h-screen bg-[#0b0d10] text-[#ededee] font-sans selection:bg-[#3b82f6] selection:text-white flex flex-col lg:flex-row relative overflow-hidden">
+    <div className="h-screen h-[100dvh] max-h-screen max-h-[100dvh] bg-[#0b0d10] text-[#ededee] font-sans selection:bg-[#3b82f6] selection:text-white flex flex-col lg:flex-row relative overflow-hidden">
       
       <style>{`
         @keyframes fadeIn {
@@ -2608,7 +2593,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                   <div className="space-y-5 animate-fade-in">
                     <div className="space-y-2">
                       <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">Como deseja ser chamado(a)?</h2>
-                      <p className="text-xs sm:text-sm text-stone-400">Escolha o codinome ou termo de tratamento para que o assistente HackerAI se dirija a você durante as varreduras.</p>
+                      <p className="text-xs sm:text-sm text-stone-400">Escolha o codinome ou termo de tratamento para que o assistente Hackerfy se dirija a você durante as varreduras.</p>
                     </div>
 
                     <div className="space-y-4 pt-2">
@@ -2879,7 +2864,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
             </button>
 
             {isSidebarExpanded && (
-              <span className="text-[10px] uppercase font-bold text-stone-500 tracking-wider">HackerAI Core</span>
+              <span className="text-[10px] uppercase font-bold text-stone-500 tracking-wider">Hackerfy Core</span>
             )}
           </div>
 
@@ -2973,7 +2958,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
               className="bg-[#0f2117] border border-emerald-500/20 p-3 rounded-xl flex items-center justify-between cursor-pointer transition shadow-sm group"
             >
               <div className="space-y-0.5">
-                <h5 className="text-[11px] font-bold text-emerald-400 tracking-normal">HackerAI Ultra</h5>
+                <h5 className="text-[11px] font-bold text-emerald-400 tracking-normal">Hackerfy Ultra</h5>
                 <p className="text-[10px] text-emerald-500/80 font-sans">Acesso Geral Desbloqueado</p>
               </div>
               <div className="h-7 w-7 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center group-hover:scale-105 transition shrink-0">
@@ -2985,7 +2970,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
               <button 
                 onClick={() => setShowPricingModal(true)}
                 className="h-8 w-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 hover:bg-emerald-500/20 transition"
-                title="HackerAI Ultra - Desbloqueado"
+                title="Hackerfy Ultra - Desbloqueado"
               >
                 <Sparkles className="h-4 w-4" />
               </button>
@@ -3045,13 +3030,13 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                 </button>
 
                 <div className="flex items-center gap-2 cursor-pointer" onClick={() => startNewChat()}>
-                  {/* Custom Overlapping geometric hexagon HackerAI shape */}
+                  {/* Custom Overlapping geometric hexagon Hackerfy shape */}
                   <svg className="h-5 w-5 text-emerald-400 rotate-12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                     <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5" />
                     <polygon points="12 6 18 10 18 14 12 18 6 14 6 10" className="opacity-70" />
                   </svg>
                   <span className="font-sans font-bold text-sm tracking-tight text-white select-none">
-                    HackerAI
+                    Hackerfy
                   </span>
                 </div>
               </div>
@@ -3182,7 +3167,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
         </header>
 
         {/* Dashboard Frame Area */}
-        <main className={`flex-1 flex flex-col w-full mx-auto px-4 ${activeTab === "chat" ? "pb-1.5 overflow-hidden" : "pb-4 overflow-y-auto"} min-h-0`}>
+        <main className={`flex-1 flex flex-col w-full mx-auto ${activeTab === "chat" ? "px-0 sm:px-4 pb-0 sm:pb-1.5 overflow-hidden" : "px-4 pb-4 overflow-y-auto"} min-h-0`}>
 
           {/* Tab Content Display Area */}
           <div className="flex-1 flex flex-col min-h-0 w-full">
@@ -3236,7 +3221,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                             t[lang].clientAuditor
                           ) : (
                             <span className="flex items-center gap-1.5 flex-wrap">
-                              <span>{t[lang].hackerAIIntelligence}</span>
+                              <span>{t[lang].hackerfyIntelligence}</span>
                               <span className={`px-1.5 py-0.5 rounded text-[7px] tracking-widest font-black uppercase inline-block 
                                 ${currentPersonality === "neon_synth" ? "bg-fuchsia-950/50 text-fuchsia-400 border border-fuchsia-500/20" : ""}
                                 ${currentPersonality === "null_entropy" ? "bg-teal-950/50 text-teal-400 border border-teal-500/20" : ""}
@@ -3439,7 +3424,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                 )}
 
                 {/* Sticky input container mimicking Gemini's docked input perfectly */}
-                <div className="shrink-0 w-full bg-gradient-to-t from-[#0b0d10] via-[#0b0d10] to-[#0b0d10]/0 pt-2 pb-1 z-30">
+                <div className="shrink-0 w-full bg-gradient-to-t from-[#0b0d10] via-[#0b0d10] to-[#0b0d10]/0 pt-2 pb-0 sm:pb-3 px-0 sm:px-4 z-30">
                   <div className="relative w-full">
                     {/* The plus button dropdown popover */}
                     {showPlusDropdown && (
@@ -3582,7 +3567,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                           onClick={() => {
                             const nextModel = currentModel === "standard" ? "pro" : currentModel === "pro" ? "max" : "standard";
                             setCurrentModel(nextModel);
-                            showToast(lang === "pt" ? `Modelo alterado para HackerAI ${nextModel.toUpperCase()}` : `Model changed to HackerAI ${nextModel.toUpperCase()}`, "info");
+                            showToast(lang === "pt" ? `Modelo alterado para Hackerfy ${nextModel.toUpperCase()}` : `Model changed to Hackerfy ${nextModel.toUpperCase()}`, "info");
                           }}
                           className="w-full text-left px-4 py-2.5 hover:bg-[#2b2c2e] transition flex items-center justify-between"
                         >
@@ -3638,7 +3623,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                     )}
 
                     {/* Pill layout matching Gemini Input Box precisely */}
-                    <div className="w-full flex items-center bg-[#1e1f20] hover:bg-[#2a2b2d] focus-within:bg-[#1e1f20] border border-[#2d2f31] focus-within:border-[#4285f4] rounded-full px-3 py-1.5 sm:px-4 sm:py-2 shadow-md transition-all">
+                    <div className="w-full flex items-center bg-[#1e1f20] hover:bg-[#2a2b2d] focus-within:bg-[#1e1f20] border-t border-b sm:border border-[#2d2f31] focus-within:border-[#4285f4] border-x-0 sm:border-x rounded-none sm:rounded-full px-3 py-1.5 sm:px-4 sm:py-2 shadow-md transition-all">
                       {/* Plus Button */}
                       <button
                         type="button"
@@ -3657,11 +3642,12 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                       <textarea
                         value={chatInput}
                         onChange={(e) => setChatInput(e.target.value)}
-                        placeholder={t[lang].heroInputPlaceholder}
+                        placeholder={isGeneratingOrSpeaking ? (lang === "pt" ? "Aguardando resposta..." : "Waiting for response...") : t[lang].heroInputPlaceholder}
+                        disabled={isGeneratingOrSpeaking}
                         rows={1}
-                        className="bg-transparent text-base sm:text-[13px] text-stone-100 placeholder-stone-500 border-none outline-none focus:ring-0 resize-none flex-1 min-w-[50px] leading-normal py-1.5 px-1"
+                        className="bg-transparent text-base sm:text-[13px] text-stone-100 placeholder-stone-500 border-none outline-none focus:ring-0 resize-none flex-1 min-w-[50px] leading-normal py-1.5 px-1 disabled:opacity-50 disabled:cursor-not-allowed"
                         onKeyDown={(e) => {
-                          if (e.key === "Enter" && !e.shiftKey) {
+                          if (e.key === "Enter" && !e.shiftKey && !isGeneratingOrSpeaking) {
                             e.preventDefault();
                             sendChatMessage();
                           }
@@ -3681,7 +3667,8 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                         <button
                           type="button"
                           onClick={isRecordingSTT ? stopRecordingSingleSTT : startRecordingSingleSTT}
-                          className={`p-1.5 sm:p-2 rounded-full transition flex items-center justify-center shrink-0 cursor-pointer ${
+                          disabled={isGeneratingOrSpeaking}
+                          className={`p-1.5 sm:p-2 rounded-full transition flex items-center justify-center shrink-0 disabled:opacity-50 disabled:cursor-not-allowed ${
                             isRecordingSTT 
                               ? "bg-rose-500 text-white animate-pulse" 
                               : "hover:bg-[#2d2f31] text-stone-300 hover:text-white"
@@ -3695,9 +3682,9 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                         <button
                           type="button"
                           onClick={sendChatMessage}
-                          disabled={!chatInput.trim()}
+                          disabled={!chatInput.trim() || isGeneratingOrSpeaking}
                           className={`p-1.5 sm:p-2 rounded-full flex items-center justify-center transition shrink-0 ${
-                            chatInput.trim() 
+                            chatInput.trim() && !isGeneratingOrSpeaking
                               ? "bg-white text-black hover:bg-stone-200 cursor-pointer" 
                               : "text-stone-600 cursor-not-allowed"
                           }`}
@@ -4589,8 +4576,8 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                   <FileText className="h-4 w-4" />
                 </div>
                 <div>
-                  <h3 className="text-xs font-black tracking-wider text-stone-200 uppercase font-mono">HackerAI Export Document</h3>
-                  <p className="text-[10px] text-stone-500">Salvo na nuvem do HackerAI • Google Docs virtual</p>
+                  <h3 className="text-xs font-black tracking-wider text-stone-200 uppercase font-mono">Hackerfy Export Document</h3>
+                  <p className="text-[10px] text-stone-500">Salvo na nuvem do Hackerfy • Google Docs virtual</p>
                 </div>
               </div>
               <button
@@ -4617,7 +4604,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
             {/* Simulated Page Body */}
             <div className="flex-1 overflow-y-auto p-6 bg-[#0b0c0e] flex justify-center">
               <div className="bg-white text-stone-900 w-full max-w-2xl min-h-[100%] shadow-xl rounded-lg p-8 font-sans selection:bg-blue-200">
-                <h1 className="text-xl font-bold border-b pb-2 mb-4 font-serif">Relatório HackerAI - Auditoria de Código</h1>
+                <h1 className="text-xl font-bold border-b pb-2 mb-4 font-serif">Relatório Hackerfy - Auditoria de Código</h1>
                 <textarea
                   className="w-full h-[60vh] bg-transparent resize-none border-none focus:outline-none text-xs font-mono leading-relaxed"
                   value={docContent}

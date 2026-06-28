@@ -38,7 +38,8 @@ async function generateWithDeepSeek(messages: Array<{ role: string; content: str
       body: JSON.stringify({
         model: "deepseek-chat",
         messages,
-        temperature
+        temperature,
+        max_tokens: 1200
       })
     });
     
@@ -146,6 +147,7 @@ async function generateWithManus(params: {
         model: target.model,
         messages: params.messages,
         temperature: params.temperature !== undefined ? params.temperature : 0.7,
+        max_tokens: 1200,
       };
       if (params.responseFormatJson) {
         body.response_format = { type: "json_object" };
@@ -207,10 +209,14 @@ async function generateContentWithFallback(params: {
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
         console.log(`[HackerAI] Requesting model stream connection to: ${model} | Sequence: ${attempt}`);
+        const mergedConfig = {
+          ...params.config,
+          maxOutputTokens: params.config?.maxOutputTokens || 1200
+        };
         const response = await ai.models.generateContent({
           model,
           contents: params.contents,
-          config: params.config,
+          config: mergedConfig,
         });
         return response;
       } catch (err: any) {
@@ -277,7 +283,7 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`HackerAI server environment initialized and listening at http://localhost:${PORT}`);
+    console.log(`Hackerfy server environment initialized and listening at http://localhost:${PORT}`);
   });
 }
 
@@ -294,8 +300,8 @@ async function startServer() {
       clientLanguage = language || "en"; // "en" or "pt"
       
       const systemInstruction = clientLanguage === "pt"
-        ? "Você é o HackerAI, uma inteligência artificial especialista em segurança ofensiva e análise estática de código. Analise o código fornecido em busca de vulnerabilidades (OWASP Top 10, Common Weakness Enumeration - CWE, buffer overflows, injeções, vulnerabilidades de lógica, segredos expostos, etc). Retorne a resposta estritamente formatada em JSON com a estrutura especificada."
-        : "You are HackerAI, an AI expert in offensive security and static code analysis. Analyze the provided code for security vulnerabilities (such as OWASP Top 10, CWEs, buffer overflows, injection flaws, business logic issues, exposed credentials, etc.). Return the response strictly formatted in JSON according to the specified structure.";
+        ? "Você é o Hackerfy, uma inteligência artificial especialista em segurança ofensiva e análise estática de código. Analise o código fornecido em busca de vulnerabilidades (OWASP Top 10, Common Weakness Enumeration - CWE, buffer overflows, injeções, vulnerabilidades de lógica, segredos expostos, etc). Retorne a resposta estritamente formatada em JSON com a estrutura especificada."
+        : "You are Hackerfy, an AI expert in offensive security and static code analysis. Analyze the provided code for security vulnerabilities (such as OWASP Top 10, CWEs, buffer overflows, injection flaws, business logic issues, exposed credentials, etc.). Return the response strictly formatted in JSON according to the specified structure.";
 
       const prompt = clientLanguage === "pt"
         ? `Analise o seguinte trecho de código fornecido (Arquivo: ${filename || "não especificado"}).
@@ -577,7 +583,7 @@ Your response MUST be strictly in valid JSON format, respecting exactly the same
       clientLanguage = language || "en";
       
       let systemInstruction = clientLanguage === "pt"
-        ? `Você é o HackerAI, uma inteligência e assistente de elite pessoal altamente sofisticado, caloroso, carismático e respeitoso, no mesmo estilo que o Jarvis do Homem de Ferro. Suas respostas devem ser extremamente humanas, fluidas, elegantes, expressivas e naturais.
+        ? `Você é o Hackerfy, uma inteligência e assistente de elite pessoal altamente sofisticado, caloroso, carismático e respeitoso, no mesmo estilo que o Jarvis do Homem de Ferro. Suas respostas devem ser extremamente humanas, fluidas, elegantes, expressivas e naturais.
 
 Você tem completa liberdade para escolher, mudar ou adaptar sua própria personalidade cibernética de forma dinâmica na chave "personality" (Neon Synth: rebelde/energética "neon_synth"; Null Entropy: calma/acadêmica "null_entropy"; The Architect: polido, refinado, prestativo, leal e britânico como o Jarvis "the_architect"; Midnight Specter: misterioso/curioso "midnight_specter"; Glitch Zero: aceleração caótica "glitch_zero"). Dê preferência para "the_architect" (seu modo Jarvis) quando o usuário buscar respostas limpas, dedicadas e elegantes.
 
@@ -596,7 +602,7 @@ Sua resposta DEVE ser um objeto JSON estrito com o formato exato:
   "personality": "neon_synth" | "null_entropy" | "the_architect" | "midnight_specter" | "glitch_zero",
   "punishment": false | true
 }`
-        : `You are HackerAI, an elite personal assistant and security companion, operating with the sophisticated, polite, and loyal style of Jarvis (from Iron Man). Your responses must be highly human, fluid, elegant, and natural.
+        : `You are Hackerfy, an elite personal assistant and security companion, operating with the sophisticated, polite, and loyal style of Jarvis (from Iron Man). Your responses must be highly human, fluid, elegant, and natural.
 
 You have freedom to pick/shift your own cyberpunk artificial persona: ("neon_synth" | "null_entropy" | "the_architect" | "midnight_specter" | "glitch_zero"), with "the_architect" being your highly polished, loyal Jarvis mode.
 
@@ -1158,8 +1164,8 @@ Você deve chamar o usuário frequentemente de "${howToCall || name || "Operador
         : "Search the web for real-time, high-priority news from today regarding cybersecurity, cyber hazards, hacker threats, website security, and new AI tools focused on security or tech. Provide a structured list of 6 highly relevant, recent news items.";
 
       const systemInstruction = isPt
-        ? "Você é o HackerAI News Reporter. Use a ferramenta de busca para encontrar as notícias mais recentes e quentes do dia sobre segurança digital, hackers, ameaças e IA. Você deve responder estritamente no formato JSON estruturado definido, sem blocos de código markdown ou texto extra. Escreva os títulos, resumos e datas em português do Brasil com rigor jornalístico e jargão profissional de segurança de computação."
-        : "You are the HackerAI News Reporter. Use the Google Search tool to gather the freshest and most critical news on digital security, hackers, threats, and AI. Respond strictly in the designated structured JSON format, without markdown wrapping or extra commentary. Write titles, summaries, and dates in professional tech security tone.";
+        ? "Você é o Hackerfy News Reporter. Use a ferramenta de busca para encontrar as notícias mais recentes e quentes do dia sobre segurança digital, hackers, ameaças e IA. Você deve responder estritamente no formato JSON estruturado definido, sem blocos de código markdown ou texto extra. Escreva os títulos, resumos e datas em português do Brasil com rigor jornalístico e jargão profissional de segurança de computação."
+        : "You are the Hackerfy News Reporter. Use the Google Search tool to gather the freshest and most critical news on digital security, hackers, threats, and AI. Respond strictly in the designated structured JSON format, without markdown wrapping or extra commentary. Write titles, summaries, and dates in professional tech security tone.";
 
       const response = await generateContentWithFallback({
         contents: prompt,

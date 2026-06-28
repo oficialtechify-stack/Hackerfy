@@ -15,7 +15,7 @@ const logsPt = [
   "Carregando regras de segurança de Banco de Dados...",
   "Escalando privilégios com controle de sessão JWT robusto...",
   "Injetando criptografia RSA-2048 no canal de comunicação...",
-  "Estabelecendo túnel de conexão seguro com o HackerAI Core...",
+  "Estabelecendo túnel de conexão seguro com o Hackerfy Core...",
   "Integrando com sucesso o assistente inteligente J.A.R.V.I.S....",
   "SISTEMA PRONTO. Redirecionando para o Workspace de Segurança..."
 ];
@@ -30,7 +30,7 @@ const logsEn = [
   "Loading Firestore security and authorization rules...",
   "Validating secure JWT session authentication controls...",
   "Applying RSA-2048 encryption protocols to data transport layer...",
-  "Establishing secure telemetry tunnel with HackerAI Core...",
+  "Establishing secure telemetry tunnel with Hackerfy Core...",
   "Successfully loading and booting J.A.R.V.I.S. system core...",
   "SYSTEM SECURE. Loading real-time security workspace..."
 ];
