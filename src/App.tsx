@@ -533,8 +533,9 @@ export default function App() {
   }, [isPunished]);
 
   // Sidebar Toggles
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(() => typeof window !== "undefined" ? window.innerWidth >= 1024 : false);
   const [isTemporaryChat, setIsTemporaryChat] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (typeof window !== "undefined" && window.innerWidth < 1024) {
@@ -1169,6 +1170,13 @@ export default function App() {
 
   const [chatInput, setChatInput] = useState("");
   const [isReplying, setIsReplying] = useState(false);
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
+    }
+  }, [chatInput]);
   const isGeneratingOrSpeaking = isReplying || voiceState === "speaking" || voiceState === "thinking";
 
   // Save chats on updates
@@ -3431,6 +3439,14 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                 {/* Sticky input container mimicking Gemini's docked input perfectly */}
                 <div className="shrink-0 w-full bg-gradient-to-t from-[#0b0d10] via-[#0b0d10] to-[#0b0d10]/0 pt-2 pb-0 sm:pb-3 px-0 sm:px-4 z-30">
                   <div className="relative w-full">
+                    {/* STT Active Status Float */}
+                    {sttStatus && (
+                      <div className="mx-auto max-w-max mb-2 text-[10px] text-stone-300 font-mono flex items-center gap-2 px-3 py-1 bg-rose-950/50 rounded-full border border-rose-500/15 animate-pulse">
+                        <span className="h-1.5 w-1.5 rounded-full bg-rose-500"></span>
+                        <span>{sttStatus}</span>
+                      </div>
+                    )}
+
                     {/* The plus button dropdown popover */}
                     {showPlusDropdown && (
                       <div className="absolute left-0 bottom-full mb-3 bg-[#1e1f20] border border-[#2d2f31] rounded-2xl shadow-2xl py-2 w-72 z-50 animate-in fade-in slide-in-from-bottom-2 text-stone-200">
@@ -3513,6 +3529,32 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                             <span className="text-xs font-semibold">Assistente J.A.R.V.I.S.</span>
                             <span className="text-[9px] text-stone-400">Organize rotinas, leia links e resuma vídeos</span>
                           </div>
+                        </button>
+
+                        {/* Microphone (Speech-to-Text) Audio Recording Option */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowPlusDropdown(false);
+                            if (isRecordingSTT) {
+                              stopRecordingSingleSTT();
+                            } else {
+                              startRecordingSingleSTT();
+                            }
+                          }}
+                          className="w-full text-left px-4 py-2.5 hover:bg-[#2b2c2e] transition flex items-center justify-between"
+                        >
+                          <div className="flex items-center gap-3">
+                            {isRecordingSTT ? (
+                              <Mic className="h-4.5 w-4.5 text-rose-500 animate-pulse" />
+                            ) : (
+                              <Mic className="h-4.5 w-4.5 text-stone-400" />
+                            )}
+                            <span className="text-xs font-medium">Gravar Áudio (Speech-to-Text)</span>
+                          </div>
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${isRecordingSTT ? "bg-rose-950/40 text-rose-400 border border-rose-500/10" : "bg-stone-900 text-stone-500"}`}>
+                            {isRecordingSTT ? "GRAVANDO" : "DESATIVADO"}
+                          </span>
                         </button>
 
                         <div className="border-t border-[#2d2f31] my-1"></div>
@@ -3681,12 +3723,13 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
 
                       {/* Textarea - flex-1 and text-base on mobile prevents iOS forced zooming while keeping elegant sizing */}
                       <textarea
+                        ref={textareaRef}
                         value={chatInput}
                         onChange={(e) => setChatInput(e.target.value)}
                         placeholder={isGeneratingOrSpeaking ? (lang === "pt" ? "Aguardando resposta..." : "Waiting for response...") : t[lang].heroInputPlaceholder}
                         disabled={isGeneratingOrSpeaking}
                         rows={1}
-                        className="bg-transparent text-base sm:text-[13px] text-stone-100 placeholder-stone-500 border-none outline-none focus:ring-0 resize-none flex-1 min-w-[50px] leading-normal py-1.5 px-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="bg-transparent text-base sm:text-[13px] text-stone-100 placeholder-stone-500 border-none outline-none focus:ring-0 resize-none flex-1 min-w-[50px] leading-normal py-1.5 px-1 disabled:opacity-50 disabled:cursor-not-allowed max-h-[120px]"
                         onKeyDown={(e) => {
                           if (e.key === "Enter" && !e.shiftKey && !isGeneratingOrSpeaking) {
                             e.preventDefault();
@@ -3697,28 +3740,6 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
 
                       {/* Right Controls Container */}
                       <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 ml-1">
-                        {sttStatus && (
-                          <span className="text-[9px] text-stone-400 font-mono flex items-center gap-1 px-1.5 bg-[#141415] rounded-full border border-white/5 animate-pulse shrink-0">
-                            <span className="h-1.5 w-1.5 rounded-full bg-rose-500"></span>
-                            <span>{sttStatus}</span>
-                          </span>
-                        )}
-
-                        {/* Microphone Button */}
-                        <button
-                          type="button"
-                          onClick={isRecordingSTT ? stopRecordingSingleSTT : startRecordingSingleSTT}
-                          disabled={isGeneratingOrSpeaking}
-                          className={`p-1.5 sm:p-2 rounded-full transition flex items-center justify-center shrink-0 disabled:opacity-50 disabled:cursor-not-allowed ${
-                            isRecordingSTT 
-                              ? "bg-rose-500 text-white animate-pulse" 
-                              : "hover:bg-[#2d2f31] text-stone-300 hover:text-white"
-                          }`}
-                          title={isRecordingSTT ? "Parar gravação" : "Gravar áudio"}
-                        >
-                          <Mic className="h-5 w-5 shrink-0" />
-                        </button>
-
                         {/* Send Message Button */}
                         <button
                           type="button"
