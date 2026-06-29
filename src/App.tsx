@@ -1100,10 +1100,15 @@ export default function App() {
 
   // Gemini-like Conversations State
   const [conversations, setConversations] = useState<ChatSession[]>(() => {
-    const saved = localStorage.getItem("hackerfy_conversations");
+    let saved = localStorage.getItem("hackerfy_conversations");
+    if (!saved) {
+      saved = localStorage.getItem("hackerai_conversations");
+    }
     if (saved) {
       try {
-        const parsed = JSON.parse(saved);
+        // Automatically replace any residual HackerAI string with Hackerfy in the chat messages
+        const updatedSaved = saved.replace(/HackerAI/g, "Hackerfy");
+        const parsed = JSON.parse(updatedSaved);
         if (Array.isArray(parsed) && parsed.length > 0) {
           return parsed;
         }
@@ -1127,7 +1132,7 @@ export default function App() {
   });
 
   const [activeChatId, setActiveChatId] = useState<string>(() => {
-    const savedActive = localStorage.getItem("hackerfy_active_chat_id");
+    const savedActive = localStorage.getItem("hackerfy_active_chat_id") || localStorage.getItem("hackerai_active_chat_id");
     if (savedActive) return savedActive;
     return conversations[0]?.id || "default";
   });
@@ -3580,6 +3585,42 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                           </span>
                         </button>
 
+                        {/* Chat Personality Selector inside '+' */}
+                        <button
+                          onClick={() => {
+                            const personalities: ("the_architect" | "neon_synth" | "null_entropy" | "midnight_specter" | "glitch_zero")[] = [
+                              "the_architect",
+                              "neon_synth",
+                              "null_entropy",
+                              "midnight_specter",
+                              "glitch_zero"
+                            ];
+                            const currentIdx = personalities.indexOf(currentPersonality);
+                            const nextIdx = (currentIdx + 1) % personalities.length;
+                            const nextPersonality = personalities[nextIdx];
+                            setCurrentPersonality(nextPersonality);
+
+                            const names: Record<string, string> = {
+                              the_architect: "Padrão / Jarvis",
+                              neon_synth: "Neon Synth",
+                              null_entropy: "Null Entropy",
+                              midnight_specter: "Midnight Specter",
+                              glitch_zero: "Glitch Zero"
+                            };
+
+                            showToast(lang === "pt" ? `Personalidade alterada para ${names[nextPersonality]}` : `Personality changed to ${nextPersonality.replace("_", " ")}`, "info");
+                          }}
+                          className="w-full text-left px-4 py-2.5 hover:bg-[#2b2c2e] transition flex items-center justify-between border-t border-[#2d2f31]/40"
+                        >
+                          <div className="flex items-center gap-3">
+                            <ColorOrb dimension="18px" className="shrink-0 rounded-md" tones={getOrbTones(currentPersonality)} />
+                            <span className="text-xs font-medium">{lang === "pt" ? "Personalidade do Chat" : "Chat Personality"}</span>
+                          </div>
+                          <span className="text-[9px] font-mono font-bold text-stone-300 uppercase tracking-widest bg-stone-900 px-1.5 py-0.5 rounded border border-stone-800">
+                            {currentPersonality === "the_architect" ? (lang === "pt" ? "PADRÃO" : "DEFAULT") : currentPersonality.replace("_", " ").toUpperCase()}
+                          </span>
+                        </button>
+
                         {/* Agent Mode Selector Toggle inside '+' */}
                         <button
                           onClick={() => {
@@ -3592,7 +3633,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                             <svg className="h-4.5 w-4.5 text-emerald-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                               <path d="M12 2a10 10 0 1 0 10 10H12V2z" />
                             </svg>
-                            <span className="text-xs font-medium">{lang === "pt" ? "Criar Sites (Gemini)" : "Create Sites (Gemini)"}</span>
+                            <span className="text-xs font-medium">{lang === "pt" ? "Criar Sites (DeepSeek)" : "Create Sites (DeepSeek)"}</span>
                           </div>
                           <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${isAgentMode ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/10" : "bg-stone-900 text-stone-500"}`}>
                             {isAgentMode ? "ATIVADO" : "DESATIVADO"}
