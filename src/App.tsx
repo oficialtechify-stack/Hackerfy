@@ -25,7 +25,6 @@ import {
   X,
   FileJson,
   Languages,
-  Newspaper,
   Plus,
   ArrowUp,
   MessageSquare,
@@ -33,11 +32,7 @@ import {
   Zap,
   Info,
   Trash2,
-  Mic,
-  MicOff,
-  Headphones,
   Volume2,
-  VolumeX,
   ArrowDown,
   LogOut,
   KeyRound,
@@ -64,7 +59,6 @@ import {
   setDoc
 } from "./firebase";
 import ShaderCanvas from "./components/ShaderCanvas";
-import { AssistantJarvis } from "./components/AssistantJarvis";
 
 
 // Translations mapping
@@ -91,7 +85,6 @@ const t = {
     yearly: "Yearly",
     getPro: "Get Pro",
     getProPlus: "Get Pro+",
-    getUltra: "Get Ultra",
     currentPlan: "Your current plan",
     pricingTitle: "Upgrade your plan",
     standardPerformance: "Reliable performance for everyday tasks",
@@ -114,8 +107,6 @@ const t = {
     tabAudit: "SAST Vulnerability Scanner",
     tabChat: "Security Conversational Core",
     tabPentest: "Threat Pentester Engine",
-    tabNews: "Threat Radar News",
-    tabAssistant: "Assistente J.A.R.V.I.S.",
     targetInput: "Target/Scope Specification (e.g. hxxps://internal-network-target)",
     pentestLog: "Pentest Attack Simulation Shell Trace:",
     pentestDesc: "Trigger dynamic exploit assessment sequences against the targeted architecture to detect logical evasion bypasses, exposed credentials, buffer triggers, and parameter corruption vulnerabilities securely.",
@@ -158,9 +149,6 @@ const t = {
     proPlusSubtitle: "For power users who need more",
     proPlusFeature1: "3x more usage than Pro",
     proPlusFeature2: "Priority support & compliance keys",
-    ultraSubtitle: "Ultimate capability suite",
-    ultraFeature1: "10x more usage than Pro",
-    ultraFeature2: "Instant access to new LLM models",
     posRecommended: "Recommended",
     saveDiscount: "Save 17%",
     liveAttackSim: "Live Attack Simulation",
@@ -169,19 +157,7 @@ const t = {
     clientAuditor: "Client Auditor",
     hackerfyIntelligence: "Hackerfy Intelligence",
     analyzingModels: "Analyzing, checking security models...",
-    attachingNotAllowed: "Attach files (Pro only)",
-    voiceModeTitle: "Advanced Voice Mode",
-    voiceActiveListening: "Continuous Conversation (Active Listening)",
-    voiceModeDesc: "Biometric and acoustic conversational sandbox. Hackerfy listens and speaks dynamically using real-time Text-to-Speech models.",
-    voiceMuted: "Muted",
-    voiceListening: "Listening (Active)...",
-    voiceProcessing: "Analyzing threat vectors...",
-    voiceSpeaking: "Speaking (Synthesizer)...",
-    voicePressButton: "Initiate Secure Call",
-    voiceClose: "End Voice Link",
-    sttStart: "Securing audio segment...",
-    sttStop: "Transcribing audio segment...",
-    micRecording: "Recording secure log..."
+    attachingNotAllowed: "Attach files (Pro only)"
   },
   pt: {
     heroTitle: "O que está no escopo hoje, Marcos?",
@@ -205,7 +181,6 @@ const t = {
     yearly: "Anual",
     getPro: "Assinar Pro",
     getProPlus: "Assinar Pro+",
-    getUltra: "Assinar Ultra",
     currentPlan: "Seu plano atual",
     pricingTitle: "Atualize seu plano",
     standardPerformance: "Desempenho confiável para tarefas do dia a dia",
@@ -228,8 +203,6 @@ const t = {
     tabAudit: "Scanner de Código (SAST)",
     tabChat: "Chat Interativo de Segurança",
     tabPentest: "Automação de Pentests",
-    tabNews: "Radar de Notícias",
-    tabAssistant: "Assistente J.A.R.V.I.S.",
     targetInput: "Alvo / Escopo do Pentest (ex: http://servico-api ou classe-sistema)",
     pentestLog: "Logs de Automação do Pentest Simulado:",
     pentestDesc: "Dispare sequências dinâmicas de avaliação de vulnerabilidades contra a arquitetura do escopo para detectar desvios de lógica, credenciais expostas e vulnerabilidades lógicas com segurança.",
@@ -264,18 +237,6 @@ const t = {
     freeFeature2: "Respostas limitadas",
     freeFeature3: "Modo Agente com sandbox local",
     proSubtitle: "Para produtividade diária",
-    voiceModeTitle: "Interação por Voz Avançada",
-    voiceActiveListening: "Conversa Contínua (Escuta Ativa)",
-    voiceModeDesc: "Canal de conversação contínua e escuta ativa segura com modelos de Text-to-Speech e streaming bidirecional de áudio para diagnósticos instantâneos por voz.",
-    voiceMuted: "Mutado",
-    voiceListening: "Ouvindo (Escuta Ativa)...",
-    voiceProcessing: "Processando resposta de segurança...",
-    voiceSpeaking: "Falando (Sintetizador)...",
-    voicePressButton: "Iniciar Conexão por Voz",
-    voiceClose: "Encerrar Canal de Voz",
-    sttStart: "Assegurando segmento de áudio...",
-    sttStop: "Transcrevendo segmento de áudio...",
-    micRecording: "Gravando log seguro...",
     proFeature1: "Acesso aos melhores modelos de IA para pentesting",
     proFeature2: "Limites de contexto expandidos",
     proFeature3: "Uploads ilimitados de arquivos fonte",
@@ -284,9 +245,6 @@ const t = {
     proPlusSubtitle: "Para usuários avançados que precisam de mais",
     proPlusFeature1: "3x mais uso do que o Pro",
     proPlusFeature2: "Suporte prioritário e chaves de conformidade",
-    ultraSubtitle: "Conjunto definitivo de recursos",
-    ultraFeature1: "10x mais uso do que o Pro",
-    ultraFeature2: "Acesso imediato a novos modelos LLM",
     posRecommended: "Recomendado",
     saveDiscount: "Economize 17%",
     liveAttackSim: "Simulação de Ataque em Tempo Real",
@@ -393,8 +351,8 @@ export default function App() {
   const [creationProgress, setCreationProgress] = useState(0);
   const [creationLog, setCreationLog] = useState<string[]>([]);
 
-  const [activeTab, setActiveTab] = useState<"chat" | "audit" | "pentest" | "news" | "assistant">("chat");
-  const handleTabChange = (tab: "chat" | "audit" | "pentest" | "news" | "assistant") => {
+  const [activeTab, setActiveTab] = useState<"chat" | "audit" | "pentest">("chat");
+  const handleTabChange = (tab: "chat" | "audit" | "pentest") => {
     setActiveTab(tab);
     if (typeof window !== "undefined" && window.innerWidth < 1024) {
       setIsSidebarExpanded(false);
@@ -546,10 +504,11 @@ export default function App() {
   // Show pricing / upgrade modal
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">("monthly");
-  const [userPlan, setUserPlan] = useState<"free" | "pro" | "pro-plus" | "ultra">("ultra");
+  const [userPlan, setUserPlan] = useState<"free" | "pro" | "pro-plus">("pro-plus");
 
   // File Upload Reference for Attachments
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const messageTimestampsRef = useRef<number[]>([]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -563,524 +522,6 @@ export default function App() {
         });
       };
       reader.readAsText(file);
-    }
-  };
-
-  // ==========================================
-  // DISPATCH VOICE & ACTIVE LISTENING SERVICES
-  // ==========================================
-  const [isRecordingSTT, setIsRecordingSTT] = useState(false);
-  const [sttStatus, setSttStatus] = useState<string | null>(null);
-  const [isVoiceModeActive, setIsVoiceModeActive] = useState(false);
-  const [isContinuousListening, setIsContinuousListening] = useState(true);
-  const [isAutoVoiceEnabled, setIsAutoVoiceEnabled] = useState(true);
-  const [voiceState, setVoiceState] = useState<"muted" | "idle" | "listening" | "thinking" | "speaking">("idle");
-  const [lastSpeechRecognized, setLastSpeechRecognized] = useState("");
-  const [voiceErrorMessage, setVoiceErrorMessage] = useState<string | null>(null);
-
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const recognitionRef = useRef<any>(null);
-  const sttRecognitionRef = useRef<any>(null);
-  const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
-  const messageTimestampsRef = useRef<number[]>([]);
-
-  // Initialize Speech recognition for "Conversa Contínua (Escuta Ativa)"
-  const startSpeechRecognition = () => {
-    if (typeof window === "undefined") return;
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      setVoiceErrorMessage(lang === "pt" ? "Recurso de Reconhecimento de Voz não suportado neste navegador." : "Speech Recognition not supported in this browser.");
-      return;
-    }
-
-    try {
-      const rec = new SpeechRecognition();
-      rec.continuous = false; // parse phrases individually to create high quality audio turn exchanges
-      rec.interimResults = false;
-      rec.lang = lang === "pt" ? "pt-BR" : "en-US";
-
-      rec.onstart = () => {
-        setVoiceState("listening");
-        setVoiceErrorMessage(null);
-      };
-
-      rec.onresult = async (event: any) => {
-        const text = event.results[0][0].transcript;
-        if (text && text.trim()) {
-          setLastSpeechRecognized(text);
-          setVoiceState("thinking");
-          
-          // Add User spoken message directly to current active chat session
-          const userMsg: Message = {
-            role: "user",
-            content: text,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          };
-          setMessages(prev => [...prev, userMsg]);
-
-          try {
-            // Retrieve AI Response
-            const response = await fetch("/api/ask", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                message: text,
-                history: messages.slice(-8),
-                language: lang,
-                userProfile: userProfile
-              })
-            });
-            const data = await response.json();
-            
-            if (data.personality) {
-              setCurrentPersonality(data.personality);
-            }
-            if (data.punishment) {
-              setIsPunished(true);
-            }
-
-            const aiReply = data.text || "Desculpe, ocorreu um erro de conexão.";
-
-            // Add Response to logs
-            setMessages(prev => [...prev, {
-              role: "assistant",
-              content: aiReply,
-              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            }]);
-
-            // Play voice answer back (TTS) and restart listening dynamically once ended
-            speakText(aiReply, data.personality || "the_architect");
-          } catch (err) {
-            console.error("Voice mode ask failed:", err);
-            setVoiceState("idle");
-          }
-        }
-      };
-
-      rec.onerror = (event: any) => {
-        console.warn("Speech Recognition Error callback:", event.error);
-        if (event.error === "not-allowed") {
-          setVoiceErrorMessage(lang === "pt" ? "Erro: Permissão de microfone negada pelo navegador." : "Error: Microphone permission denied by browser.");
-        }
-        setVoiceState("idle");
-      };
-
-      rec.onend = () => {
-        // If voice link is active and we are in continuous listining and not speaking, restart recognition
-        if (isVoiceModeActive && isContinuousListening && voiceState !== "speaking" && voiceState !== "thinking") {
-          try {
-            rec.start();
-          } catch (e) {
-            // Already started
-          }
-        }
-      };
-
-      recognitionRef.current = rec;
-      rec.start();
-    } catch (e: any) {
-      console.error("SpeechRecognition initialization failed:", e);
-      setVoiceErrorMessage(e.message || "Failed to initialize standard speech recognition.");
-    }
-  };
-
-  // Stop dynamic continuous speech recognition
-  const stopSpeechRecognition = () => {
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.abort();
-      } catch (e) {
-        console.log("No active recognition instance to abort.");
-      }
-    }
-  };
-
-  // Helper to convert raw 16-bit Mono PCM little-endian audio to WAV Blob URL
-  const pcmToWav = (pcmBase64: string, sampleRate: number = 24000): string => {
-    try {
-      const binaryString = window.atob(pcmBase64);
-      const len = binaryString.length;
-      const bytes = new Uint8Array(len);
-      for (let i = 0; i < len; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-
-      const buffer = new ArrayBuffer(44 + len);
-      const view = new DataView(buffer);
-
-      /* RIFF identifier */
-      view.setUint32(0, 0x52494646, false); // "RIFF"
-      /* file length */
-      view.setUint32(4, 36 + len, true);
-      /* RIFF type */
-      view.setUint32(8, 0x57415645, false); // "WAVE"
-      /* format chunk identifier */
-      view.setUint32(12, 0x666d7420, false); // "fmt "
-      /* format chunk length */
-      view.setUint32(16, 16, true);
-      /* sample format (raw PCM = 1) */
-      view.setUint16(20, 1, true);
-      /* channel count (mono = 1) */
-      view.setUint16(22, 1, true);
-      /* sample rate */
-      view.setUint32(24, sampleRate, true);
-      /* byte rate (sample rate * block align) */
-      view.setUint32(28, sampleRate * 2, true);
-      /* block align (channel count * bytes per sample) */
-      view.setUint16(32, 2, true);
-      /* bits per sample */
-      view.setUint16(34, 16, true);
-      /* data chunk identifier */
-      view.setUint32(36, 0x64617461, false); // "data"
-      /* data chunk length */
-      view.setUint32(40, len, true);
-
-      const uint8Buffer = new Uint8Array(buffer);
-      uint8Buffer.set(bytes, 44);
-
-      const blob = new Blob([buffer], { type: "audio/wav" });
-      return URL.createObjectURL(blob);
-    } catch (e) {
-      console.error("Failed to convert PCM to WAV:", e);
-      return "";
-    }
-  };
-
-  // TTS - Speech Synthesis (Text-to-Speech) using Gemini TTS (gemini-3.1-flash-tts-preview) with native browser fallback
-  const speakText = async (text: string, personality?: string) => {
-    // Clean text of technical markdown or large code structures so voice synthesising runs naturally
-    const cleanText = text
-      .replace(/```[\s\S]*?```/g, " [Código suprimido na leitura de voz] ")
-      .replace(/`([^`]+)`/g, " $1 ")
-      .replace(/[*#_\-\\/[\]()]/g, " ")
-      .trim();
-
-    if (!cleanText) {
-      setVoiceState("idle");
-      return;
-    }
-
-    const speakBrowserTTS = () => {
-      if (typeof window === "undefined" || !window.speechSynthesis) {
-        setVoiceState("idle");
-        return;
-      }
-      try {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(cleanText);
-        utterance.lang = lang === "pt" ? "pt-BR" : "en-US";
-        
-        utterance.onstart = () => {
-          setVoiceState("speaking");
-        };
-        utterance.onend = () => {
-          setVoiceState("idle");
-          if (isVoiceModeActive && isContinuousListening && recognitionRef.current) {
-            try {
-              recognitionRef.current.start();
-            } catch (e) {
-              // Already active
-            }
-          }
-        };
-        utterance.onerror = () => {
-          setVoiceState("idle");
-        };
-        
-        window.speechSynthesis.speak(utterance);
-      } catch (err) {
-        console.error("Browser TTS fallback failed:", err);
-        setVoiceState("idle");
-      }
-    };
-
-    try {
-      // Abort active readings
-      stopTTS();
-
-      setVoiceState("thinking");
-
-      const p = personality || currentPersonality;
-      const response = await fetch("/api/tts", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          text: cleanText,
-          language: lang,
-          personality: p
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`TTS server response error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      if (!data.audio) {
-        throw new Error("No audio returned from Gemini TTS");
-      }
-
-      const mimeType = data.mimeType || "audio/pcm";
-      let audioUrl = "";
-
-      if (mimeType && typeof mimeType === "string" && mimeType.includes("pcm")) {
-        audioUrl = pcmToWav(data.audio, 24000);
-      } else {
-        const binaryString = window.atob(data.audio);
-        const len = binaryString.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        
-        // Rewrite audio/x-aac to audio/aac to improve browser compatibility
-        let playMimeType = mimeType;
-        if (playMimeType === "audio/x-aac") {
-          playMimeType = "audio/aac";
-        }
-        
-        const blob = new Blob([bytes], { type: playMimeType });
-        audioUrl = URL.createObjectURL(blob);
-      }
-
-      if (!audioUrl) {
-        throw new Error("Failed to create Audio URL");
-      }
-
-      const audio = new Audio(audioUrl);
-      ttsAudioRef.current = audio;
-
-      audio.onplay = () => {
-        setVoiceState("speaking");
-      };
-
-      audio.onended = () => {
-        setVoiceState("idle");
-        // Re-enable microphones listening immediately if continuous hands-free active is desired
-        if (isVoiceModeActive && isContinuousListening && recognitionRef.current) {
-          try {
-            recognitionRef.current.start();
-          } catch (e) {
-            // Already active
-          }
-        }
-      };
-
-      audio.onerror = (event) => {
-        console.warn("Audio playback error, falling back to Browser TTS:", event);
-        speakBrowserTTS();
-      };
-
-      await audio.play();
-    } catch (e) {
-      console.warn("Gemini TTS error, falling back to Browser TTS:", e);
-      speakBrowserTTS();
-    }
-  };
-
-  // Halt all speak processes
-  const stopTTS = () => {
-    if (typeof window !== "undefined") {
-      if (window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-      }
-      if (ttsAudioRef.current) {
-        try {
-          ttsAudioRef.current.pause();
-          ttsAudioRef.current.currentTime = 0;
-        } catch (e) {
-          // Ignore
-        }
-        ttsAudioRef.current = null;
-      }
-    }
-    setVoiceState("idle");
-  };
-
-  // Voice Link Activation Modal Trigger (Continuous channel popup)
-  const toggleVoiceModeOverlay = (active: boolean) => {
-    if (active) {
-      setIsVoiceModeActive(true);
-      setVoiceState("idle");
-      setLastSpeechRecognized("");
-      // Wait shortly for state update before invoking mic
-      setTimeout(() => {
-        startSpeechRecognition();
-      }, 300);
-    } else {
-      setIsVoiceModeActive(false);
-      stopSpeechRecognition();
-      stopTTS();
-      setVoiceState("idle");
-    }
-  };
-
-  // ==========================================
-  // SINGLE PRESS RECORD & TRANSCRIBE (STT) LINE
-  // ==========================================
-  const runMediaRecorderSTTFallback = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      audioChunksRef.current = [];
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/ogg";
-      const recorder = new MediaRecorder(stream, { mimeType });
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          audioChunksRef.current.push(e.data);
-        }
-      };
-
-      recorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
-        setSttStatus(t[lang].sttStop);
-
-        const reader = new FileReader();
-        reader.readAsDataURL(audioBlob);
-        reader.onloadend = async () => {
-          const base64data = reader.result as string;
-          const base64Raw = base64data.split(",")[1];
-
-          try {
-            const response = await fetch("/api/transcribe", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                audio: base64Raw,
-                mimeType: mimeType
-              })
-            });
-            const data = await response.json();
-            if (data.text && data.text.trim()) {
-              setChatInput(prev => {
-                const space = prev.trim() ? " " : "";
-                return prev + space + data.text.trim();
-              });
-            }
-          } catch (err) {
-            console.error("Transcribe API fallback dispatch error:", err);
-          } finally {
-            setSttStatus(null);
-            setIsRecordingSTT(false);
-          }
-        };
-      };
-
-      mediaRecorderRef.current = recorder;
-      recorder.start();
-      setIsRecordingSTT(true);
-      setSttStatus(t[lang].sttStart);
-    } catch (err: any) {
-      console.warn("Input mic fallback access refused:", err);
-      setIsRecordingSTT(false);
-      setSttStatus(null);
-      alert(lang === "pt" ? "Acesso ao microfone foi recusado ou não é suportado no ambiente seguro corrente." : "Microphone access was refused or not supported in this frame context.");
-    }
-  };
-
-  const startRecordingSingleSTT = async () => {
-    if (typeof window === "undefined") return;
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    
-    if (!SpeechRecognition) {
-      console.log("No native SpeechRecognition found. Launching MediaRecorder fallback.");
-      runMediaRecorderSTTFallback();
-      return;
-    }
-
-    try {
-      if (sttRecognitionRef.current) {
-        try {
-          sttRecognitionRef.current.abort();
-        } catch (e) {}
-      }
-
-      const rec = new SpeechRecognition();
-      rec.continuous = true;
-      rec.interimResults = true;
-      rec.lang = lang === "pt" ? "pt-BR" : "en-US";
-
-      const initialVal = chatInput.trim() ? chatInput.trim() + " " : "";
-
-      rec.onstart = () => {
-        setIsRecordingSTT(true);
-        setSttStatus(lang === "pt" ? "Escutando..." : "Listening...");
-      };
-
-      rec.onresult = (event: any) => {
-        let interimTranscript = "";
-        let finalTranscript = "";
-
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          const transcript = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            finalTranscript += transcript;
-          } else {
-            interimTranscript += transcript;
-          }
-        }
-
-        const spokenText = finalTranscript || interimTranscript;
-        if (spokenText) {
-          setChatInput(initialVal + spokenText);
-        }
-      };
-
-      rec.onerror = (event: any) => {
-        console.warn("STT Speech Recognition error, switching to MediaRecorder fallback:", event.error);
-        if (event.error === "aborted") return; // ignore intentional speech stops
-
-        // Chrome blocks webkitSpeechRecognition inside cross-origin iframes.
-        // Fallback immediately to standard getUserMedia and MediaRecorder, which works perfectly.
-        rec.onend = null;
-        rec.onerror = null;
-        try {
-          rec.abort();
-        } catch (e) {}
-
-        runMediaRecorderSTTFallback();
-      };
-
-      rec.onend = () => {
-        setIsRecordingSTT(false);
-        setSttStatus(null);
-      };
-
-      sttRecognitionRef.current = rec;
-      rec.start();
-    } catch (err: any) {
-      console.warn("SpeechRecognition init failed, launching MediaRecorder fallback:", err);
-      runMediaRecorderSTTFallback();
-    }
-  };
-
-  const stopRecordingSingleSTT = () => {
-    let stoppedByNative = false;
-    if (sttRecognitionRef.current) {
-      try {
-        sttRecognitionRef.current.stop();
-        stoppedByNative = true;
-      } catch (e) {
-        console.error("Stop native STT recognition failed:", e);
-      }
-    }
-    
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-      try {
-        mediaRecorderRef.current.stop();
-        mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-      } catch (e) {
-        console.error("Stop single media stream tracks failed:", e);
-      }
-    }
-
-    if (stoppedByNative) {
-      // Immediately finalize tracking states
-      setIsRecordingSTT(false);
-      setSttStatus(null);
     }
   };
 
@@ -1177,7 +618,7 @@ export default function App() {
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
     }
   }, [chatInput]);
-  const isGeneratingOrSpeaking = isReplying || voiceState === "speaking" || voiceState === "thinking";
+  const isGeneratingOrSpeaking = isReplying;
 
   // Save chats on updates
   useEffect(() => {
@@ -1380,49 +821,6 @@ export default function App() {
   const [pentestLogs, setPentestLogs] = useState<string[]>([]);
   const [isPentesting, setIsPentesting] = useState(false);
   const [isPentestFinished, setIsPentestFinished] = useState(false);
-
-  // Threat Radar News State & Logic
-  interface NewsItem {
-    id: string;
-    title: string;
-    summary: string;
-    source: string;
-    url: string;
-    category: "security" | "technology" | "danger" | "ai";
-    publishedAt: string;
-  }
-
-  const [news, setNews] = useState<NewsItem[]>([]);
-  const [isFetchingNews, setIsFetchingNews] = useState(false);
-  const [newsError, setNewsError] = useState<string | null>(null);
-  const [activeCategory, setActiveCategory] = useState<"all" | "security" | "technology" | "danger" | "ai">("all");
-  const [isLiveNews, setIsLiveNews] = useState(false);
-
-  const fetchNews = async (force = false) => {
-    setIsFetchingNews(true);
-    setNewsError(null);
-    try {
-      const res = await fetch(`/api/news?language=${lang}${force ? "&refresh=true" : ""}`);
-      const data = await res.json();
-      if (data.news) {
-        setNews(data.news);
-        setIsLiveNews(data.isLive !== false);
-      } else {
-        setNewsError(data.error || "Erro ao carregar notícias");
-      }
-    } catch (err: any) {
-      console.error("Error fetching news:", err);
-      setNewsError("Falha de rede ao conectar com a central de notícias.");
-    } finally {
-      setIsFetchingNews(false);
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab === "news" && news.length === 0) {
-      fetchNews();
-    }
-  }, [activeTab]);
 
   const logsEndRef = useRef<HTMLDivElement>(null);
 
@@ -1697,11 +1095,6 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
         content: rawContent,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       }]);
-
-      // Speak text aloud conforming to personality voice settings if auto-voice is enabled
-      if (isAutoVoiceEnabled) {
-        speakText(rawContent, data.personality || "the_architect");
-      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -1823,9 +1216,6 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       }]);
 
-      if (isAutoVoiceEnabled) {
-        speakText(rawContent, data.personality || "the_architect");
-      }
       showToast(lang === "pt" ? "Resposta regenerada com sucesso!" : "Response successfully regenerated!", "success");
     } catch (err) {
       console.error(err);
@@ -2971,8 +2361,8 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
               className="bg-[#0f2117] border border-emerald-500/20 p-3 rounded-xl flex items-center justify-between cursor-pointer transition shadow-sm group"
             >
               <div className="space-y-0.5">
-                <h5 className="text-[11px] font-bold text-emerald-400 tracking-normal">Hackerfy Ultra</h5>
-                <p className="text-[10px] text-emerald-500/80 font-sans">Acesso Geral Desbloqueado</p>
+                <h5 className="text-[11px] font-bold text-emerald-400 tracking-normal">Hackerfy Pro</h5>
+                <p className="text-[10px] text-emerald-500/80 font-sans">Acesso Desbloqueado</p>
               </div>
               <div className="h-7 w-7 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center group-hover:scale-105 transition shrink-0">
                 <Sparkles className="h-3.5 w-3.5 text-emerald-400" />
@@ -2983,7 +2373,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
               <button 
                 onClick={() => setShowPricingModal(true)}
                 className="h-8 w-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 hover:bg-emerald-500/20 transition"
-                title="Hackerfy Ultra - Desbloqueado"
+                title="Hackerfy Pro - Desbloqueado"
               >
                 <Sparkles className="h-4 w-4" />
               </button>
@@ -3002,7 +2392,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                     {userProfile.name || "Marcos Henrique"}
                   </p>
                   <p className="text-[10px] text-emerald-400 font-mono font-semibold">
-                    {userProfile.profileType === "empresa" ? "Conta Enterprise" : "Conta Ultra (Ilimitada)"}
+                    {userProfile.profileType === "empresa" ? "Conta Enterprise" : "Conta Pro"}
                   </p>
                 </div>
               )}
@@ -3022,159 +2412,62 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
       {/* Outer wrapper */}
       <div className="flex-1 h-screen lg:h-full flex flex-col justify-start relative w-full min-w-0 overflow-hidden">
 
-        {/* Top Header Controls: star upgrade logic, language buttons and Incognito status */}
-        <header className="px-3 sm:px-5 py-3 sm:py-4 flex flex-col md:flex-row gap-3 md:gap-0 justify-between items-center bg-transparent z-15 border-b border-[#1e1e20]/40 md:border-b-0 w-full shrink-0">
+        {/* Top Header Controls: clean and simple layout with Logo on left and User Profile on right */}
+        <header className="px-3 sm:px-5 py-2.5 sm:py-4 flex flex-row justify-between items-center bg-transparent z-15 border-b border-[#1e1e20]/40 md:border-b-0 w-full shrink-0">
           
-          {/* Logo & Tab Toggle Buttons */}
-          <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 w-full md:w-auto">
-            <div className="flex items-center justify-between w-full sm:w-auto gap-2.5 sm:gap-4">
-              <div className="flex items-center gap-2">
-                {/* Hamburger Button for Mobile Drawer Toggle */}
-                <button
-                  onClick={() => setIsSidebarExpanded(!isSidebarExpanded)}
-                  className="lg:hidden p-1.5 rounded-lg hover:bg-[#1f1f22] text-stone-400 hover:text-white transition flex items-center justify-center focus:outline-none"
-                  title="Menu"
-                >
-                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                    <line x1="3" y1="12" x2="21" y2="12" />
-                    <line x1="3" y1="6" x2="21" y2="6" />
-                    <line x1="3" y1="18" x2="21" y2="18" />
-                  </svg>
-                </button>
+          {/* Left Side: Hamburger & Logo */}
+          <div className="flex flex-row items-center gap-3">
+            {/* Hamburger Button for Mobile Drawer Toggle */}
+            <button
+              onClick={() => setIsSidebarExpanded(!isSidebarExpanded)}
+              className="lg:hidden p-1.5 rounded-lg hover:bg-[#1f1f22] text-stone-400 hover:text-white transition flex items-center justify-center focus:outline-none"
+              title="Menu"
+            >
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
+            </button>
 
-                <div className="flex items-center gap-2 cursor-pointer" onClick={() => startNewChat()}>
-                  {/* Custom Overlapping geometric hexagon Hackerfy shape */}
-                  <svg className="h-5 w-5 text-emerald-400 rotate-12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5" />
-                    <polygon points="12 6 18 10 18 14 12 18 6 14 6 10" className="opacity-70" />
-                  </svg>
-                  <span className="font-sans font-bold text-sm tracking-tight text-white select-none">
-                    Hackerfy
-                  </span>
-                </div>
-              </div>
-
-              {/* Mobile Quick controls (Voice and Incognito) */}
-              <div className="flex items-center gap-2 md:hidden">
-                {/* Mobile Download/Install Trigger */}
-                <button
-                  onClick={handleInstallApp}
-                  className="flex items-center justify-center h-8 px-2.5 rounded-full border border-amber-500/30 text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 text-[10px] font-bold gap-1 transition"
-                  title="Baixar App"
-                >
-                  <svg className="h-3.5 w-3.5 text-amber-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="7 10 12 15 17 10" />
-                    <line x1="12" y1="15" x2="12" y2="3" />
-                  </svg>
-                  <span>Baixar</span>
-                </button>
-
-                <button
-                  onClick={() => toggleVoiceModeOverlay(true)}
-                  className="flex items-center justify-center h-8 w-8 rounded-full border border-purple-500/20 text-purple-400 bg-purple-500/5 hover:bg-purple-500/10 transition animate-pulse"
-                  title="Conexão de Voz IA"
-                >
-                  <Headphones className="h-4 w-4" />
-                </button>
-
-                <div 
-                  onClick={handleToggleTemporary}
-                  className={`h-8 w-8 rounded-full flex items-center justify-center border transition duration-300 cursor-pointer ${
-                    isTemporaryChat 
-                      ? "bg-[#14231b] border-emerald-500/40 text-emerald-400" 
-                      : "bg-[#131314] hover:bg-[#1a1a1c] border-[#202021] text-stone-300 hover:text-white"
-                  }`}
-                  title="Modo Privado"
-                >
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                    <path d="M2.5 12h19M12 2A10 10 0 0 1 22 12H2A10 10 0 0 1 12 2z" fill="currentColor" fillOpacity="0.1" />
-                    <circle cx="7" cy="18" r="2.5" />
-                    <circle cx="17" cy="18" r="2.5" />
-                    <path d="M9.5 18h5" />
-                  </svg>
-                </div>
-              </div>
-            </div>
-
-            {/* Language Selection Tab Switches - Centered nicely */}
-            <div className="bg-[#121213] p-0.5 rounded-lg border border-[#1e1e20] flex items-center text-[10px] overflow-x-auto scrollbar-none max-w-full whitespace-nowrap w-full sm:w-auto justify-center">
-              <button
-                onClick={() => handleTabChange("chat")}
-                className={`px-3 py-1.5 sm:py-1 rounded font-medium transition shrink-0 ${activeTab === "chat" ? "bg-[#1f1f22] text-[#fff]" : "text-stone-400 hover:text-white"}`}
-              >
-                {t[lang].tabChat}
-              </button>
-              <button
-                onClick={() => handleTabChange("assistant")}
-                className={`px-3 py-1.5 sm:py-1 rounded font-medium transition shrink-0 ${activeTab === "assistant" ? "bg-[#1f1f22] text-[#fff]" : "text-stone-400 hover:text-white"}`}
-              >
-                {t[lang].tabAssistant}
-              </button>
-              <button
-                onClick={() => handleTabChange("news")}
-                className={`px-3 py-1.5 sm:py-1 rounded font-medium transition shrink-0 ${activeTab === "news" ? "bg-[#1f1f22] text-[#fff]" : "text-stone-400 hover:text-white"}`}
-              >
-                {t[lang].tabNews}
-              </button>
+            <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => startNewChat()}>
+              {/* Custom Shield Emblem - Hackerfy logo matching the image */}
+              <svg className="h-5.5 w-5.5 text-emerald-400" viewBox="0 0 100 110" fill="none" stroke="currentColor" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round">
+                {/* Shield Contour */}
+                <path d="M50 5 L90 22 V55 C90 82 73 103 50 110 C27 103 10 82 10 55 V22 L50 5 Z" stroke="currentColor" strokeWidth="7" fill="none" />
+                {/* Inner interlocking geometric structure (HK) */}
+                <path d="M50 18 V95" stroke="currentColor" strokeWidth="7" />
+                {/* Left interlocking branches */}
+                <path d="M30 35 L50 55 L30 75" stroke="currentColor" strokeWidth="7" />
+                <path d="M30 35 V75" stroke="currentColor" strokeWidth="7" />
+                {/* Right interlocking branches */}
+                <path d="M70 35 L50 55 L70 75" stroke="currentColor" strokeWidth="7" />
+                <path d="M70 35 V75" stroke="currentColor" strokeWidth="7" />
+              </svg>
+              <span className="font-sans font-bold text-sm tracking-tight text-white select-none">
+                Hackerfy
+              </span>
             </div>
           </div>
 
-          {/* Right Header Navigation buttons - Desktop/Large screens only */}
-          <div className="hidden md:flex items-center gap-3">
-            {/* Advanced Voice Mode Activation Link */}
-            <button
-              onClick={() => toggleVoiceModeOverlay(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold border border-purple-500/20 text-purple-400 bg-purple-500/5 hover:bg-purple-500/10 transition animate-pulse"
-              title="Iniciar Canal de Voz Avançado"
-            >
-              <Headphones className="h-3.5 w-3.5" />
-              <span>Conexão de Voz IA</span>
-            </button>
-
-            {/* Indicação de Modo Seguro */}
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-mono border border-emerald-500/10 text-emerald-400/80 bg-[#14231b]/30">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>Auditoria Ativa</span>
-            </div>
-
-            {/* Golden Ultra account status badge */}
-            <div className="flex items-center gap-1.5 text-[10px] font-extrabold text-amber-400 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 shadow-sm leading-none select-none">
-              <Sparkles className="h-3 w-3 text-amber-400 shrink-0" />
-              <span>ULTRA / ILIMITADO</span>
-            </div>
-
-            {/* PWA App Download Option */}
-            <button
-              onClick={handleInstallApp}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold border border-amber-500/20 text-amber-400 bg-amber-500/5 hover:bg-amber-500/10 transition cursor-pointer"
-              title="Baixar App Hackerfy no Celular"
-            >
-              <svg className="h-3.5 w-3.5 text-amber-400 shrink-0 animate-bounce" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-              <span>Baixar App</span>
-            </button>
-
-            {/* Incognito stealth icon matching top right of Screen 4 */}
-            <div 
-              onClick={handleToggleTemporary}
-              className={`h-8.5 w-8.5 rounded-full flex items-center justify-center border transition duration-300 cursor-pointer ${
-                isTemporaryChat 
-                  ? "bg-[#14231b] border-emerald-500/40 text-emerald-400" 
-                  : "bg-[#131314] hover:bg-[#1a1a1c] border-[#202021] text-stone-300 hover:text-white"
-              }`}
-              title="Alternar Modo Privado Temporário"
-            >
-              {/* Steathy Custom Incognito vector shapes: Hat and Glasses */}
-              <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <path d="M2.5 12h19M12 2A10 10 0 0 1 22 12H2A10 10 0 0 1 12 2z" fill="currentColor" fillOpacity="0.1" />
-                <circle cx="7" cy="18" r="2.5" />
-                <circle cx="17" cy="18" r="2.5" />
-                <path d="M9.5 18h5" />
-              </svg>
+          {/* Right Side: User Profile / Avatar Entry */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="hidden sm:flex flex-col items-end">
+                <span className="text-xs font-semibold text-stone-200">
+                  {userProfile.howToCall || userProfile.name || "Marcos"}
+                </span>
+                <span className="text-[9px] text-emerald-400 font-mono tracking-wider uppercase select-none">
+                  {userPlan === "pro" || userPlan === "pro-plus" ? "PRO ACCESS" : "STANDARD"}
+                </span>
+              </div>
+              <div 
+                onClick={() => setShowPricingModal(true)}
+                className="h-8.5 w-8.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center select-none text-xs shrink-0 uppercase cursor-pointer hover:bg-emerald-500/20 transition duration-200"
+                title="Configurações do Perfil / Plano"
+              >
+                {userProfile.howToCall ? userProfile.howToCall.charAt(0).toUpperCase() : "M"}
+              </div>
             </div>
           </div>
         </header>
@@ -3339,7 +2632,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                                         type="button"
                                         onClick={() => {
                                           setOpenMenuIdx(null);
-                                          speakText(m.content, currentPersonality);
+                                          // Voice disabled
                                         }}
                                         className="w-full flex items-center gap-2.5 px-3.5 py-2 text-left text-xs hover:bg-stone-800 hover:text-white transition-colors"
                                       >
@@ -3439,14 +2732,6 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                 {/* Sticky input container mimicking Gemini's docked input perfectly */}
                 <div className="shrink-0 w-full bg-gradient-to-t from-[#0b0d10] via-[#0b0d10] to-[#0b0d10]/0 pt-2 pb-0 sm:pb-3 px-0 sm:px-4 z-30">
                   <div className="relative w-full">
-                    {/* STT Active Status Float */}
-                    {sttStatus && (
-                      <div className="mx-auto max-w-max mb-2 text-[10px] text-stone-300 font-mono flex items-center gap-2 px-3 py-1 bg-rose-950/50 rounded-full border border-rose-500/15 animate-pulse">
-                        <span className="h-1.5 w-1.5 rounded-full bg-rose-500"></span>
-                        <span>{sttStatus}</span>
-                      </div>
-                    )}
-
                     {/* The plus button dropdown popover */}
                     {showPlusDropdown && (
                       <div className="absolute left-0 bottom-full mb-3 bg-[#1e1f20] border border-[#2d2f31] rounded-2xl shadow-2xl py-2 w-72 z-50 animate-in fade-in slide-in-from-bottom-2 text-stone-200">
@@ -3514,76 +2799,6 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                             <span className="text-xs font-semibold">Automação de Pentests</span>
                             <span className="text-[9px] text-stone-400">Simulador de intrusão e exploits</span>
                           </div>
-                        </button>
-
-                        {/* Assistente J.A.R.V.I.S. */}
-                        <button
-                          onClick={() => {
-                            setShowPlusDropdown(false);
-                            handleTabChange("assistant");
-                          }}
-                          className={`w-full text-left px-4 py-2.5 hover:bg-[#2b2c2e] transition flex items-center gap-3 ${activeTab === "assistant" ? "bg-[#252628] text-white" : ""}`}
-                        >
-                          <Sparkles className="h-4.5 w-4.5 text-cyan-400" />
-                          <div className="flex-1 flex flex-col">
-                            <span className="text-xs font-semibold">Assistente J.A.R.V.I.S.</span>
-                            <span className="text-[9px] text-stone-400">Organize rotinas, leia links e resuma vídeos</span>
-                          </div>
-                        </button>
-
-                        {/* Microphone (Speech-to-Text) Audio Recording Option */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowPlusDropdown(false);
-                            if (isRecordingSTT) {
-                              stopRecordingSingleSTT();
-                            } else {
-                              startRecordingSingleSTT();
-                            }
-                          }}
-                          className="w-full text-left px-4 py-2.5 hover:bg-[#2b2c2e] transition flex items-center justify-between"
-                        >
-                          <div className="flex items-center gap-3">
-                            {isRecordingSTT ? (
-                              <Mic className="h-4.5 w-4.5 text-rose-500 animate-pulse" />
-                            ) : (
-                              <Mic className="h-4.5 w-4.5 text-stone-400" />
-                            )}
-                            <span className="text-xs font-medium">Gravar Áudio (Speech-to-Text)</span>
-                          </div>
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${isRecordingSTT ? "bg-rose-950/40 text-rose-400 border border-rose-500/10" : "bg-stone-900 text-stone-500"}`}>
-                            {isRecordingSTT ? "GRAVANDO" : "DESATIVADO"}
-                          </span>
-                        </button>
-
-                        <div className="border-t border-[#2d2f31] my-1"></div>
-
-                        {/* Auto-read voice feedback toggle inside '+' */}
-                        <button
-                          onClick={() => {
-                            setShowPlusDropdown(false);
-                            if (isAutoVoiceEnabled) {
-                              stopTTS();
-                              setIsAutoVoiceEnabled(false);
-                            } else {
-                              setIsAutoVoiceEnabled(true);
-                              speakText(lang === "pt" ? "Resposta por voz ativada." : "Voice response enabled.");
-                            }
-                          }}
-                          className="w-full text-left px-4 py-2.5 hover:bg-[#2b2c2e] transition flex items-center justify-between"
-                        >
-                          <div className="flex items-center gap-3">
-                            {isAutoVoiceEnabled ? (
-                              <Volume2 className="h-4.5 w-4.5 text-purple-400" />
-                            ) : (
-                              <VolumeX className="h-4.5 w-4.5 text-stone-400" />
-                            )}
-                            <span className="text-xs font-medium">Resposta por Voz</span>
-                          </div>
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${isAutoVoiceEnabled ? "bg-purple-950/40 text-purple-400 border border-purple-500/10" : "bg-stone-900 text-stone-500"}`}>
-                            {isAutoVoiceEnabled ? "ATIVADO" : "DESATIVADO"}
-                          </span>
                         </button>
 
                         {/* Toggle Temporary / Incognito Chat inside '+' dropdown */}
@@ -4066,198 +3281,6 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
               </div>
             )}
 
-            {/* Tab: Threat Radar & Security News */}
-            {activeTab === "news" && (
-              <div className="w-full max-w-3xl space-y-6 text-left leading-normal animate-in fade-in-50 duration-300">
-                
-                {/* Header section */}
-                <div className="bg-[#111112] border border-[#1e1e20] rounded-2xl p-5 md:p-6 space-y-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className="flex items-center gap-2.5">
-                      <div className="p-2 bg-purple-500/10 rounded-xl border border-purple-500/20 text-purple-400">
-                        <Newspaper className="h-5 w-5 animate-pulse" />
-                      </div>
-                      <div>
-                        <h3 className="text-sm font-bold text-white tracking-widest uppercase font-mono">
-                          {lang === "pt" ? "Radar de Ameaças & Notícias" : "Threat Radar & Security News"}
-                        </h3>
-                        <p className="text-[11px] text-stone-400 leading-relaxed font-sans mt-0.5">
-                          {lang === "pt" 
-                            ? "Acompanhe novidades de cibersegurança, ameaças hacker, perigos digitais e novas IAs atualizados em tempo real pela internet." 
-                            : "Track cybersecurity news, hacker threats, digital hazards, and new AIs updated in real-time from across the web."}
-                        </p>
-                      </div>
-                    </div>
-                    
-                    {/* Manual update button */}
-                    <button
-                      onClick={() => fetchNews(true)}
-                      disabled={isFetchingNews}
-                      className="flex items-center justify-center gap-2 px-3.5 py-1.5 bg-[#171719] hover:bg-[#1f1f22] border border-[#242426] hover:border-[#303033] rounded-xl text-xs font-semibold text-stone-300 hover:text-white transition cursor-pointer self-start sm:self-auto shrink-0"
-                    >
-                      <RotateCw className={`h-3.5 w-3.5 ${isFetchingNews ? "animate-spin text-purple-400" : "text-stone-400"}`} />
-                      <span>{lang === "pt" ? "Atualizar Agora" : "Update Now"}</span>
-                    </button>
-                  </div>
-
-                  {/* Filter chips */}
-                  <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-1 pt-2 border-t border-[#1a1a1c]">
-                    {[
-                      { key: "all", label: lang === "pt" ? "Todas" : "All" },
-                      { key: "security", label: lang === "pt" ? "Segurança de Sites" : "Web Security" },
-                      { key: "danger", label: lang === "pt" ? "Perigos & Ameaças" : "Hazards & Threats" },
-                      { key: "ai", label: lang === "pt" ? "Novas IAs" : "New AI" },
-                      { key: "technology", label: lang === "pt" ? "Tecnologia" : "Technology" }
-                    ].map((cat) => (
-                      <button
-                        key={cat.key}
-                        onClick={() => setActiveCategory(cat.key as any)}
-                        className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition shrink-0 ${
-                          activeCategory === cat.key
-                            ? "bg-purple-500/10 text-purple-300 border border-purple-500/30"
-                            : "bg-[#141416] text-stone-500 hover:text-stone-300 border border-[#202022]"
-                        }`}
-                      >
-                        {cat.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* News indicator banner */}
-                {isLiveNews && !isFetchingNews && (
-                  <div className="flex items-center justify-between px-4 py-2.5 bg-emerald-500/5 border border-emerald-500/10 rounded-xl text-[11px] font-medium text-emerald-400">
-                    <div className="flex items-center gap-2">
-                      <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                      </span>
-                      <span>
-                        {lang === "pt" 
-                          ? "Sincronizado: Exibindo boletim gerado em tempo real com busca na web." 
-                          : "Synchronized: Displaying bulletin compiled live with web search."}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* News Listing Grid */}
-                {isFetchingNews ? (
-                  /* Loading skeleton list */
-                  <div className="space-y-4">
-                    {[1, 2, 3].map((n) => (
-                      <div key={n} className="bg-[#111112] border border-[#1e1e20] rounded-2xl p-5 space-y-3 animate-pulse">
-                        <div className="flex items-center justify-between">
-                          <div className="h-4 w-20 bg-stone-800 rounded-md"></div>
-                          <div className="h-4 w-24 bg-stone-800 rounded-md"></div>
-                        </div>
-                        <div className="h-5 w-3/4 bg-stone-800 rounded-md"></div>
-                        <div className="space-y-2">
-                          <div className="h-3.5 w-full bg-stone-800 rounded-md"></div>
-                          <div className="h-3.5 w-5/6 bg-stone-800 rounded-md"></div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : newsError ? (
-                  /* Error display state */
-                  <div className="bg-[#111112] border border-red-500/15 rounded-2xl p-8 text-center space-y-4">
-                    <div className="text-red-400 font-bold text-sm">
-                      {lang === "pt" ? "Erro ao Atualizar Notícias" : "News Update Error"}
-                    </div>
-                    <p className="text-xs text-stone-400 max-w-md mx-auto leading-relaxed">
-                      {newsError}
-                    </p>
-                    <button
-                      onClick={() => fetchNews(true)}
-                      className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold uppercase rounded-xl transition inline-flex items-center gap-2 cursor-pointer"
-                    >
-                      <RotateCw className="h-3.5 w-3.5" />
-                      <span>{lang === "pt" ? "Tentar Novamente" : "Try Again"}</span>
-                    </button>
-                  </div>
-                ) : (
-                  /* Filtered news grid */
-                  <div className="space-y-4">
-                    {news.filter((item) => activeCategory === "all" || item.category === activeCategory).length === 0 ? (
-                      /* Category empty state */
-                      <div className="bg-[#111112] border border-[#1e1e20] rounded-2xl p-10 text-center text-xs text-stone-500 font-medium">
-                        {lang === "pt" ? "Nenhuma notícia nesta categoria no momento." : "No news in this category at the moment."}
-                      </div>
-                    ) : (
-                      news
-                        .filter((item) => activeCategory === "all" || item.category === activeCategory)
-                        .map((item) => {
-                          // Category specific colors and labels
-                          const catMeta = {
-                            danger: { label: lang === "pt" ? "Ameaça Crítica" : "Critical Threat", color: "bg-red-500/10 text-red-400 border-red-500/20" },
-                            ai: { label: lang === "pt" ? "Tecnologia IA" : "AI Technology", color: "bg-purple-500/10 text-purple-400 border-purple-500/20" },
-                            security: { label: lang === "pt" ? "Segurança de Sites" : "Site Security", color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
-                            technology: { label: lang === "pt" ? "Tecnologia Geral" : "General Tech", color: "bg-amber-500/10 text-amber-400 border-amber-500/20" }
-                          }[item.category] || { label: "Tech", color: "bg-stone-500/10 text-stone-400 border-stone-500/20" };
-
-                          return (
-                            <div 
-                              key={item.id} 
-                              className="bg-[#111112] border border-[#1e1e20] hover:border-[#262629] rounded-2xl p-5 space-y-3.5 transition-all hover:translate-y-[-1px] relative overflow-hidden group shadow-md"
-                            >
-                              <div className="flex items-center justify-between gap-3 text-[10px]">
-                                <span className={`px-2.5 py-0.5 rounded border text-[9px] font-black uppercase tracking-wider ${catMeta.color}`}>
-                                  {catMeta.label}
-                                </span>
-                                <div className="text-stone-500 flex items-center gap-2">
-                                  <span>{item.source}</span>
-                                  <span>•</span>
-                                  <span>{item.publishedAt}</span>
-                                </div>
-                              </div>
-
-                              <div className="space-y-2">
-                                <h4 className="text-xs sm:text-sm font-bold text-white tracking-tight leading-snug group-hover:text-purple-400 transition break-words">
-                                  {item.title}
-                                </h4>
-                                <p className="text-[11px] text-stone-400 leading-relaxed font-sans break-words select-text">
-                                  {item.summary}
-                                </p>
-                              </div>
-
-                              {item.url && (
-                                <div className="pt-2 flex justify-end">
-                                  <a
-                                    href={item.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    referrerPolicy="no-referrer"
-                                    className="inline-flex items-center gap-1.5 text-[10px] font-bold text-stone-400 hover:text-white transition group/link font-mono uppercase tracking-wider"
-                                  >
-                                    <span>{lang === "pt" ? "Ver Fonte Completa" : "Read Full Article"}</span>
-                                    <ArrowRight className="h-3 w-3 group-hover/link:translate-x-0.5 transition-transform" />
-                                  </a>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })
-                    )}
-                  </div>
-                )}
-                
-              </div>
-            )}
-
-            {/* Tab: Personal AI Assistant (J.A.R.V.I.S.) */}
-            {activeTab === "assistant" && (
-              <div className="w-full text-left leading-normal animate-in fade-in-50 duration-300">
-                <AssistantJarvis
-                  lang={lang}
-                  userProfile={userProfile}
-                  speakText={speakText}
-                  stopTTS={stopTTS}
-                  voiceState={voiceState}
-                />
-              </div>
-            )}
-
           </div>
 
         </main>
@@ -4304,7 +3327,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
               </div>
 
               {/* Pricing Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-2 text-xs">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 text-xs">
                 
                 {/* Free plan */}
                 <div className="bg-[#131314] border border-[#202022] rounded-2xl p-5 flex flex-col justify-between space-y-6">
@@ -4424,41 +3447,6 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                   </div>
                 </div>
 
-                {/* Ultra plan */}
-                <div className="bg-[#131314] border border-[#202022] rounded-2xl p-5 flex flex-col justify-between space-y-6">
-                  <div className="space-y-4">
-                    <div>
-                      <h4 className="text-xs font-bold text-[#818cf8] uppercase tracking-widest block">Ultra</h4>
-                      <div className="mt-2 text-3xl font-black text-white flex items-baseline gap-1">
-                        ${billingPeriod === "monthly" ? "200" : "166"}{" "}
-                        <span className="text-stone-500 text-[10px] font-semibold lowercase">USD/{t[lang].monthly.toLowerCase()}</span>
-                      </div>
-                      <span className="text-[10px] block mt-1.5 text-stone-500">{t[lang].ultraSubtitle}</span>
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        setUserPlan("ultra");
-                        setShowPricingModal(false);
-                      }}
-                      className="w-full text-center py-2 rounded-lg bg-[#4f46e5] text-white text-[10px] font-bold hover:bg-[#6366f1] transition leading-none shadow-sm hover:scale-[1.01]"
-                    >
-                      {t[lang].getUltra}
-                    </button>
-
-                    <div className="text-[10px] text-stone-400 space-y-2 border-t border-[#1e1e20] pt-3 leading-snug">
-                      <div className="flex items-center gap-1.5 font-bold text-stone-200">
-                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                        <span>{t[lang].ultraFeature1}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                        <span>{t[lang].ultraFeature2}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
               </div>
             </div>
           </div>
@@ -4491,125 +3479,6 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                 </button>
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Advanced continuous voice link modal overlay panel */}
-      {isVoiceModeActive && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md animate-in fade-in-30">
-          <div className="relative w-full max-w-md bg-[#101011] border border-purple-500/20 rounded-3xl p-6 text-center shadow-3xl space-y-6">
-            <button
-              onClick={() => toggleVoiceModeOverlay(false)}
-              className="absolute top-4 right-4 p-2 rounded-full hover:bg-white/5 text-stone-400 hover:text-white transition"
-            >
-              <X className="h-5 w-5" />
-            </button>
-
-            {/* Glowing active radar target logo */}
-            <div className="flex flex-col items-center py-6">
-              <div className="relative flex items-center justify-center h-28 w-28 rounded-full bg-purple-500/5 border border-purple-500/20 shadow-inner">
-                {/* Visual pulse waveforms representing live speech */}
-                {voiceState === "speaking" && (
-                  <>
-                    <div className="absolute inset-0 rounded-full border border-purple-500/40 animate-ping opacity-60"></div>
-                    <div className="absolute inset-2 rounded-full border border-purple-400/30 animate-pulse opacity-40"></div>
-                  </>
-                )}
-                {voiceState === "listening" && (
-                  <div className="absolute inset-3 rounded-full border border-emerald-500/30 animate-pulse opacity-80"></div>
-                )}
-                
-                <div className={`h-16 w-16 rounded-full flex items-center justify-center transition shadow-md ${
-                  voiceState === "speaking" 
-                    ? "bg-purple-500 text-white shadow-purple-500/20" 
-                    : voiceState === "listening"
-                    ? "bg-emerald-500 text-white shadow-emerald-500/20"
-                    : voiceState === "thinking"
-                    ? "bg-blue-600 text-stone-100 animate-pulse"
-                    : "bg-[#1d1d20] border border-[#2d2d30] text-stone-400"
-                }`}>
-                  {voiceState === "speaking" ? (
-                    <Volume2 className="h-7 w-7" />
-                  ) : voiceState === "listening" ? (
-                    <Mic className="h-7 w-7" />
-                  ) : (
-                    <Headphones className="h-7 w-7" />
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-5 space-y-1">
-                <h3 className="text-sm font-bold text-stone-100 tracking-tight">{t[lang].voiceModeTitle}</h3>
-                <p className="text-[10px] text-stone-400 font-sans tracking-wide max-w-[280px] mx-auto leading-relaxed">
-                  {t[lang].voiceModeDesc}
-                </p>
-              </div>
-            </div>
-
-            {/* Realtime voice state badge */}
-            <div className="bg-[#141416] border border-[#232325] px-4 py-3 rounded-2xl flex items-center justify-between text-xs text-stone-300 font-mono">
-              <span className="flex items-center gap-2">
-                <span className={`h-2 w-2 rounded-full ${
-                  voiceState === "speaking" 
-                    ? "bg-purple-500 animate-pulse" 
-                    : voiceState === "listening" 
-                    ? "bg-emerald-500 animate-pulse"
-                    : "bg-stone-600"
-                }`}></span>
-                <span>
-                  {voiceState === "speaking" 
-                    ? t[lang].voiceSpeaking 
-                    : voiceState === "listening" 
-                    ? t[lang].voiceListening
-                    : voiceState === "thinking"
-                    ? t[lang].voiceProcessing
-                    : t[lang].voiceMuted}
-                </span>
-              </span>
-
-              {/* Toggle switch to mute continuous listening */}
-              <button
-                onClick={() => {
-                  const target = !isContinuousListening;
-                  setIsContinuousListening(target);
-                  if (!target) {
-                    stopSpeechRecognition();
-                    setVoiceState("muted");
-                  } else {
-                    startSpeechRecognition();
-                  }
-                }}
-                className={`px-2.5 py-1 rounded-md text-[10px] font-bold border transition ${
-                  isContinuousListening 
-                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20" 
-                    : "bg-stone-800 text-stone-400 border-stone-700 hover:bg-stone-700"
-                }`}
-              >
-                {isContinuousListening ? "Escuta Ativa: ON" : "Escuta Ativa: MUTED"}
-              </button>
-            </div>
-
-            {/* Subtitles showing transcribed words in real-time */}
-            <div className="min-h-[48px] bg-[#141416]/50 border border-[#202022] rounded-2xl p-3 text-left">
-              <span className="text-[9px] uppercase font-bold text-stone-500 block mb-1 font-mono tracking-wider">Última Fala Reconhecida:</span>
-              <p className="text-[11px] text-stone-300 italic font-sans font-medium line-clamp-2">
-                {lastSpeechRecognized ? `"${lastSpeechRecognized}"` : "Aguardando áudio seguro..."}
-              </p>
-            </div>
-
-            {voiceErrorMessage && (
-              <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-[10px] text-rose-400 text-left font-sans leading-relaxed">
-                {voiceErrorMessage}
-              </div>
-            )}
-
-            <button
-              onClick={() => toggleVoiceModeOverlay(false)}
-              className="w-full py-2.5 rounded-2xl bg-stone-100 hover:bg-white text-black font-semibold text-xs shadow transition cursor-pointer"
-            >
-              {t[lang].voiceClose}
-            </button>
           </div>
         </div>
       )}

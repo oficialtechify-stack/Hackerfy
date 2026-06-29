@@ -1,9 +1,7 @@
 {
   "name": "Remix: Hackerfy",
   "description": "An interactive AI-powered secure code auditor, real-time vulnerability analyzer, and educational penetration testing simulation suite.",
-  "requestFramePermissions": [
-    "microphone"
-  ],
+  "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]
