@@ -10,6 +10,7 @@ interface OrbProps {
     accent3?: string
   }
   spinDuration?: number
+  personality?: string
 }
 
 export const ColorOrb: React.FC<OrbProps> = ({
@@ -17,6 +18,7 @@ export const ColorOrb: React.FC<OrbProps> = ({
   className = "",
   tones,
   spinDuration = 20,
+  personality = "the_architect",
 }) => {
   const fallbackTones = {
     base: "oklch(95% 0.02 264.695)",
@@ -45,7 +47,7 @@ export const ColorOrb: React.FC<OrbProps> = ({
   const adjustedContrast =
     dimValue < 30 ? 1.1 : dimValue < 50 ? Math.max(contrastStrength * 1.2, 1.3) : contrastStrength
 
-  const combinedClass = `color-orb ${className}`
+  const combinedClass = `color-orb color-orb-${personality} ${className}`
 
   return (
     <div
@@ -80,6 +82,51 @@ export const ColorOrb: React.FC<OrbProps> = ({
           position: relative;
           transform: scale(1.1);
           flex-shrink: 0;
+          transition: all 0.5s ease;
+        }
+
+        .color-orb-neon_synth {
+          animation: neon-float 3.5s ease-in-out infinite;
+        }
+        .color-orb-null_entropy {
+          animation: entropy-drift 10s ease-in-out infinite;
+        }
+        .color-orb-midnight_specter {
+          animation: specter-fade 6s ease-in-out infinite;
+        }
+        .color-orb-glitch_zero {
+          animation: glitch-shake 0.4s steps(4) infinite;
+        }
+        .color-orb-the_architect {
+          animation: architect-float 5s ease-in-out infinite;
+        }
+
+        @keyframes neon-float {
+          0%, 100% { transform: translateY(0) scale(1.1); filter: drop-shadow(0 0 2px var(--accent1)); }
+          50% { transform: translateY(-4px) scale(1.22); filter: drop-shadow(0 0 8px var(--accent1)); }
+        }
+
+        @keyframes entropy-drift {
+          0%, 100% { transform: scale(1.1) rotate(0deg) translate(0, 0); }
+          33% { transform: scale(1.05) rotate(120deg) translate(1px, -1px); }
+          66% { transform: scale(1.12) rotate(240deg) translate(-1px, 1px); }
+        }
+
+        @keyframes specter-fade {
+          0%, 100% { transform: scale(1.1) translateY(0); opacity: 0.8; }
+          50% { transform: scale(1.2) translateY(-2.5px); opacity: 1; filter: saturate(1.2); }
+        }
+
+        @keyframes glitch-shake {
+          0%, 100% { transform: translate(0, 0) scale(1.1) skewX(0deg); }
+          25% { transform: translate(-1.5px, 1px) scale(1.18) skewX(-3deg); filter: hue-rotate(15deg); }
+          50% { transform: translate(1px, -1.5px) scale(1.05) skewX(2deg); filter: hue-rotate(-15deg); }
+          75% { transform: translate(-1px, -1px) scale(1.13) skewX(-1deg); }
+        }
+
+        @keyframes architect-float {
+          0%, 100% { transform: translateY(0) scale(1.1); }
+          50% { transform: translateY(-2px) scale(1.15); }
         }
 
         .color-orb::before,

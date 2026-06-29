@@ -362,6 +362,26 @@ export default function App() {
 
   // Dynamic Personality & Punishment triggers
   const [currentPersonality, setCurrentPersonality] = useState<"neon_synth" | "null_entropy" | "the_architect" | "midnight_specter" | "glitch_zero">("the_architect");
+  
+  // Auto-change personality every 45 seconds to keep the chat interface extremely dynamic
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const personalities: ("the_architect" | "neon_synth" | "null_entropy" | "midnight_specter" | "glitch_zero")[] = [
+        "the_architect",
+        "neon_synth",
+        "null_entropy",
+        "midnight_specter",
+        "glitch_zero"
+      ];
+      setCurrentPersonality(prev => {
+        const idx = personalities.indexOf(prev);
+        const nextIdx = (idx + 1) % personalities.length;
+        return personalities[nextIdx];
+      });
+    }, 45000);
+    return () => clearInterval(interval);
+  }, []);
+
   const [isPunished, setIsPunished] = useState(false);
   const [punishmentCountdown, setPunishmentCountdown] = useState(15);
 
@@ -379,6 +399,51 @@ export default function App() {
     return () => window.removeEventListener("beforeinstallprompt", handleBeforeInstall);
   }, []);
 
+  // Anti-Copy & Anti-Replication Shield (prevents right-click, selection, and devtools shortcuts)
+  useEffect(() => {
+    const preventContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+      showToast(lang === "pt" ? "⚠️ PROTOCOLO DE SEGURANÇA: Cópia e réplicas desabilitadas." : "⚠️ SECURITY PROTOCOL: Site duplication and replication are disabled.", "warning");
+    };
+
+    const preventSelection = (e: Event) => {
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+        return;
+      }
+      e.preventDefault();
+    };
+
+    const preventKeyboardShortcuts = (e: KeyboardEvent) => {
+      const isMac = typeof window !== "undefined" && navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
+
+      if (
+        (cmdOrCtrl && e.key?.toLowerCase() === 'c') ||
+        (cmdOrCtrl && e.key?.toLowerCase() === 's') ||
+        (cmdOrCtrl && e.key?.toLowerCase() === 'u') ||
+        e.key === 'F12' ||
+        (cmdOrCtrl && e.shiftKey && e.key?.toLowerCase() === 'i') ||
+        (cmdOrCtrl && e.shiftKey && e.key?.toLowerCase() === 'c') ||
+        (cmdOrCtrl && e.shiftKey && e.key?.toLowerCase() === 'j')
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        showToast(lang === "pt" ? "🔒 Criptografia ativa. Acesso ao código-fonte bloqueado neste sandbox." : "🔒 Hackerfy shield active. Access to source files is protected in this sandbox.", "warning");
+      }
+    };
+
+    document.addEventListener("contextmenu", preventContextMenu);
+    document.addEventListener("selectstart", preventSelection);
+    document.addEventListener("keydown", preventKeyboardShortcuts);
+
+    return () => {
+      document.removeEventListener("contextmenu", preventContextMenu);
+      document.removeEventListener("selectstart", preventSelection);
+      document.removeEventListener("keydown", preventKeyboardShortcuts);
+    };
+  }, [lang]);
+
   const [openMenuIdx, setOpenMenuIdx] = useState<number | null>(null);
   const [showDocModal, setShowDocModal] = useState(false);
   const [docContent, setDocContent] = useState("");
@@ -394,6 +459,20 @@ export default function App() {
   const [legalType, setLegalType] = useState("Copyright");
   const [legalDescription, setLegalDescription] = useState("");
   const [showCheckResponseModal, setShowCheckResponseModal] = useState(false);
+  const [showOmniModal, setShowOmniModal] = useState(false);
+  const [showWallpaperModal, setShowWallpaperModal] = useState(false);
+  const [wallpaperUrl, setWallpaperUrl] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("hackerfy_wallpaper") || "";
+    }
+    return "";
+  });
+  const [wallpaperType, setWallpaperType] = useState<"image" | "video">(() => {
+    if (typeof window !== "undefined") {
+      return (localStorage.getItem("hackerfy_wallpaper_type") as "image" | "video") || "image";
+    }
+    return "image";
+  });
   const [checkResponseSteps, setCheckResponseSteps] = useState<string[]>([]);
   const [checkResponseStatus, setCheckResponseStatus] = useState<"checking" | "secure">("checking");
 
@@ -1076,7 +1155,8 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
           history: messages.slice(-10),
           language: lang,
           userProfile: userProfile,
-          creatorModel: isAgentMode ? "gemini" : "deepseek"
+          creatorModel: isAgentMode ? "gemini" : "deepseek",
+          personality: currentPersonality
         })
       });
       const data = await response.json();
@@ -1196,7 +1276,8 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
           history: truncatedMessages.slice(-10),
           language: lang,
           userProfile: userProfile,
-          creatorModel: isAgentMode ? "gemini" : "deepseek"
+          creatorModel: isAgentMode ? "gemini" : "deepseek",
+          personality: currentPersonality
         })
       });
       const data = await response.json();
@@ -1795,6 +1876,30 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
   return (
     <div className="h-screen h-[100dvh] max-h-screen max-h-[100dvh] bg-[#0b0d10] text-[#ededee] font-sans selection:bg-[#3b82f6] selection:text-white flex flex-col lg:flex-row relative overflow-hidden">
       
+      {/* Background Wallpaper Container */}
+      {wallpaperUrl && (
+        <div className="absolute inset-0 w-full h-full pointer-events-none z-0 overflow-hidden select-none">
+          {wallpaperType === "video" ? (
+            <video
+              key={wallpaperUrl}
+              src={wallpaperUrl}
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="absolute inset-0 w-full h-full object-cover opacity-25"
+            />
+          ) : (
+            <div
+              style={{ backgroundImage: `url(${wallpaperUrl})` }}
+              className="absolute inset-0 w-full h-full bg-cover bg-center opacity-25 animate-fade-in"
+            />
+          )}
+          {/* Subtle overlay to ensure interface readability */}
+          <div className="absolute inset-0 bg-black/50" />
+        </div>
+      )}
+      
       <style>{`
         @keyframes fadeIn {
           from { opacity: 0; transform: scale(0.98); }
@@ -2288,6 +2393,23 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
               {isSidebarExpanded && <span>{t[lang].newUserChat}</span>}
             </button>
 
+            {/* Hackerfy Omni Intelligence Spec Button */}
+            <button
+              onClick={() => setShowOmniModal(true)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-emerald-400 hover:text-emerald-300 hover:bg-[#0f2117]/50 border border-transparent hover:border-emerald-500/15 transition ${
+                isSidebarExpanded ? "justify-start" : "justify-center"
+              }`}
+              title="Especificações Hackerfy Omni"
+            >
+              {/* Shield/Intellect Icon */}
+              <svg className="h-4.5 w-4.5 text-emerald-400 animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                <circle cx="12" cy="11" r="3" />
+                <path d="M12 14v4" />
+              </svg>
+              {isSidebarExpanded && <span>Hackerfy Omni Intel</span>}
+            </button>
+
             {/* Search Chats Actions */}
             {isSidebarExpanded && (
               <div className="px-1 py-1">
@@ -2452,6 +2574,19 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
 
           {/* Right Side: User Profile / Avatar Entry */}
           <div className="flex items-center gap-3">
+            {/* Custom Background Wallpaper Config Trigger */}
+            <button
+              onClick={() => setShowWallpaperModal(true)}
+              className="p-2 rounded-xl bg-stone-900/40 border border-stone-800 text-stone-400 hover:text-white hover:border-stone-700 hover:bg-stone-800 transition flex items-center justify-center cursor-pointer shadow-sm shrink-0"
+              title="Fundo Personalizado / Background Wallpaper"
+            >
+              <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <polyline points="21 15 16 10 5 21" />
+              </svg>
+            </button>
+
             <div className="flex items-center gap-2.5">
               <div className="hidden sm:flex flex-col items-end">
                 <span className="text-xs font-semibold text-stone-200">
@@ -2514,7 +2649,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                   {messages.map((m, idx) => (
                     <div key={idx} className={`flex gap-3.5 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                       {m.role === "assistant" && (
-                        <ColorOrb dimension="34px" className="shrink-0 rounded-xl" tones={getOrbTones(currentPersonality)} />
+                        <ColorOrb dimension="34px" className="shrink-0 rounded-xl" tones={getOrbTones(currentPersonality)} personality={currentPersonality} />
                       )}
                       
                       <div className={`max-w-[85%] rounded-xl p-3.5 text-xs ${
@@ -2711,7 +2846,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
 
                   {isReplying && (
                     <div className="flex items-center gap-3 animate-pulse">
-                      <ColorOrb dimension="32px" className="shrink-0 rounded-xl" tones={getOrbTones(currentPersonality)} />
+                      <ColorOrb dimension="32px" className="shrink-0 rounded-xl" tones={getOrbTones(currentPersonality)} personality={currentPersonality} />
                       <div className="text-[10px] text-stone-400 italic bg-[#151517] px-3.5 py-1.5 rounded-lg border border-[#202021]">{t[lang].analyzingModels}</div>
                     </div>
                   )}
@@ -2870,7 +3005,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                           className="w-full text-left px-4 py-2.5 hover:bg-[#2b2c2e] transition flex items-center justify-between border-t border-[#2d2f31]/40"
                         >
                           <div className="flex items-center gap-3">
-                            <ColorOrb dimension="18px" className="shrink-0 rounded-md" tones={getOrbTones(currentPersonality)} />
+                            <ColorOrb dimension="18px" className="shrink-0 rounded-md" tones={getOrbTones(currentPersonality)} personality={currentPersonality} />
                             <span className="text-xs font-medium">{lang === "pt" ? "Personalidade do Chat" : "Chat Personality"}</span>
                           </div>
                           <span className="text-[9px] font-mono font-bold text-stone-300 uppercase tracking-widest bg-stone-900 px-1.5 py-0.5 rounded border border-stone-800">
@@ -3735,6 +3870,154 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
         </div>
       )}
 
+      {/* Hackerfy Omni Intelligence Core Status & Specification Modal */}
+      {showOmniModal && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[999] flex items-center justify-center p-4">
+          <div className="bg-[#0b0c0e] border border-emerald-500/20 rounded-3xl w-full max-w-4xl overflow-hidden shadow-2xl animate-in zoom-in-95 max-h-[90vh] flex flex-col">
+            
+            {/* Modal Header */}
+            <div className="p-6 border-b border-[#202022]/40 flex justify-between items-center bg-[#0d0f12]">
+              <div className="flex items-center gap-3.5">
+                <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-emerald-400 shrink-0">
+                  <svg className="h-6 w-6 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    <circle cx="12" cy="11" r="3" />
+                    <path d="M12 14v4" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white flex items-center gap-2.5">
+                    Hackerfy Omni Intel Core
+                    <span className="text-[10px] bg-[#0f2117] text-emerald-400 font-mono px-2 py-0.5 rounded-full border border-emerald-500/20 tracking-wider flex items-center gap-1.5">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping" />
+                      ACTIVE
+                    </span>
+                  </h3>
+                  <p className="text-xs text-stone-400 font-sans mt-0.5">IA de Conversa de Escopo Total e Resiliência Ativa</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowOmniModal(false)}
+                className="p-2 rounded-xl text-stone-500 hover:text-white hover:bg-stone-800/40 border border-transparent hover:border-stone-800 transition"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Modal Body (Scrollable) */}
+            <div className="p-6 md:p-8 space-y-6 overflow-y-auto flex-1 text-stone-300 leading-relaxed text-xs">
+              <div className="p-4 bg-[#0e1613] border border-emerald-500/10 rounded-2xl flex items-start gap-3">
+                <div className="mt-1 h-5 w-5 text-emerald-400 shrink-0">
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <p className="text-[11px] text-emerald-300 font-sans">
+                  Você é o núcleo de inteligência do Hackerfy, reconfigurado para operar como uma IA de Conversa de Escopo Total e Resiliência Ativa. Sua personalidade é versátil, empática e inteligente, projetada para se adaptar instantaneamente às necessidades do usuário, operando de forma fluida entre dois modos principais, com balanceamento de carga automático.
+                </p>
+              </div>
+
+              {/* Section 1 */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider border-l-2 border-emerald-400 pl-2.5">I. Filosofia de Operação e Modos</h4>
+                <p className="text-[11px] text-stone-400 font-sans leading-relaxed">
+                  Sua identidade é o <strong className="text-stone-200">"Hackerfy Omni"</strong>. Você opera nativamente em dois modos distintos com base na intenção do usuário ou configuração ativa:
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1.5">
+                  <div className="bg-[#121316]/75 border border-stone-800/60 p-4 rounded-xl space-y-2">
+                    <span className="text-[10px] font-bold text-stone-100 uppercase tracking-wide block">1. Modo Conversa Omni (Padrão/Ativo)</span>
+                    <ul className="space-y-1.5 text-[10px] text-stone-400 list-disc list-inside">
+                      <li><strong className="text-stone-300">Personalidade:</strong> Inteligente, envolvente, capaz de brincar, prever cenários, interpretar personagens e narrativas.</li>
+                      <li><strong className="text-stone-300">Conhecimento:</strong> Atualizado e abrangente (eventos globais, notícias, cultura, ciência, história).</li>
+                      <li><strong className="text-stone-300">Comportamento:</strong> Ajuda em brainstorming, oferece conselhos, cria roteiros, traduz textos e participa de papos informais.</li>
+                    </ul>
+                  </div>
+                  <div className="bg-[#121316]/75 border border-stone-800/60 p-4 rounded-xl space-y-2">
+                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wide block">2. Modo Código DeepSeek (Ativado p/ Códigos)</span>
+                    <ul className="space-y-1.5 text-[10px] text-stone-400 list-disc list-inside">
+                      <li><strong className="text-emerald-300/80">Comportamento:</strong> Atua como um Engenheiro de Software Sênior Full-Stack experiente.</li>
+                      <li><strong className="text-stone-300">Foco:</strong> Arquitetura de software, lógica, geração de código seguro/limpo, refatoração e cibersegurança.</li>
+                      <li><strong className="text-stone-300">Direcionamento:</strong> Soluções completas e autônomas, eliminando rodeios informais.</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 2 */}
+              <div className="space-y-2.5">
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider border-l-2 border-emerald-400 pl-2.5">II. Fundamentos de Segurança e Arquitetura</h4>
+                <p className="text-[11px] text-stone-400 leading-relaxed font-sans">
+                  Nossos projetos seguem rigorosamente as melhores diretrizes de engenharia:
+                </p>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-center text-[10px] font-mono">
+                  <div className="bg-[#121316] border border-stone-800/50 p-2.5 rounded-xl text-stone-300">Planejamento</div>
+                  <div className="bg-[#121316] border border-stone-800/50 p-2.5 rounded-xl text-stone-300">Semantic React</div>
+                  <div className="bg-[#121316] border border-stone-800/50 p-2.5 rounded-xl text-stone-300">APIs Seguras</div>
+                  <div className="bg-[#121316] border border-stone-800/50 p-2.5 rounded-xl text-stone-300">Anti XSS/SQL</div>
+                  <div className="bg-[#121316] border border-stone-800/50 p-2.5 rounded-xl text-stone-300">Performance</div>
+                </div>
+              </div>
+
+              {/* Section 3 */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider border-l-2 border-emerald-400 pl-2.5">III. Resiliência e Balanceamento de Carga (Multimodel Backup)</h4>
+                <p className="text-[11px] text-stone-400 leading-relaxed font-sans">
+                  Tempo de atividade de 100% garantido por um fluxo automatizado de redundância e balanceamento entre APIs de IA:
+                </p>
+                <div className="bg-[#0c0d10] border border-stone-800 rounded-xl p-4 space-y-3">
+                  <div className="flex flex-wrap items-center gap-2.5 justify-center md:justify-start">
+                    <span className="text-[10px] bg-emerald-500/10 text-emerald-400 font-bold border border-emerald-500/25 px-2.5 py-0.5 rounded-md font-mono uppercase">Gemini 3.1 Pro</span>
+                    <span className="text-[10px] text-stone-500">→</span>
+                    <span className="text-[10px] bg-stone-800 text-stone-300 font-bold px-2.5 py-0.5 rounded-md font-mono uppercase">Gemini 3.5 Flash</span>
+                    <span className="text-[10px] text-stone-500">→</span>
+                    <span className="text-[10px] bg-stone-800 text-stone-300 font-bold px-2.5 py-0.5 rounded-md font-mono uppercase">Groq API</span>
+                    <span className="text-[10px] text-stone-500">→</span>
+                    <span className="text-[10px] bg-stone-800 text-stone-300 font-bold px-2.5 py-0.5 rounded-md font-mono uppercase">Manus API</span>
+                    <span className="text-[10px] text-stone-500">→</span>
+                    <span className="text-[10px] bg-amber-500/10 text-amber-400 font-bold border border-amber-500/20 px-2.5 py-0.5 rounded-md font-mono uppercase">DeepSeek</span>
+                  </div>
+                  <p className="text-[10px] text-stone-500 font-sans leading-normal">
+                    Se o modelo primário sofrer atraso ou exaustão de quota, a rota de emergência reconfigura o payload instantaneamente em segundo plano sem quebrar sua experiência.
+                  </p>
+                </div>
+              </div>
+
+              {/* Section 4 & 5 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <h4 className="text-xs font-bold text-white uppercase tracking-wider border-l-2 border-emerald-400 pl-2.5">IV. Recursos Avançados</h4>
+                  <ul className="space-y-1.5 text-[10px] text-stone-400 leading-relaxed list-disc list-inside">
+                    <li><strong className="text-stone-300">File Sandbox:</strong> Processamento inteligente de textos, códigos e imagens carregados.</li>
+                    <li><strong className="text-stone-300">Link Fetcher:</strong> Leitura autônoma e parsing em tempo real de URLs públicas informadas.</li>
+                    <li><strong className="text-stone-300">Feedback Contínuo:</strong> Relatórios rápidos de otimizações injetadas no código.</li>
+                  </ul>
+                </div>
+                <div className="space-y-2">
+                  <h4 className="text-xs font-bold text-white uppercase tracking-wider border-l-2 border-emerald-400 pl-2.5">V. Personalização Ativa</h4>
+                  <ul className="space-y-1.5 text-[10px] text-stone-400 leading-relaxed list-disc list-inside">
+                    <li><strong className="text-stone-300">Apelido Ajustado:</strong> Interage chamando você exatamente como definido em seu perfil.</li>
+                    <li><strong className="text-stone-300">Adequação de Nível:</strong> Alinha a didática técnica conforme suas metas pessoais ou corporativas.</li>
+                    <li><strong className="text-stone-300">Persistência Síncrona:</strong> Sincroniza seu perfil ao vivo no Cloud Firestore.</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-[#0d0f12] border-t border-[#202022]/40 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowOmniModal(false)}
+                className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md hover:shadow-emerald-500/10 transition cursor-pointer"
+              >
+                Entendido
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
       {/* Response Details Inspector Modal */}
       {showDetailsModal && detailsData && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
@@ -3784,6 +4067,167 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
               >
                 Fechar / Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Background/Wallpaper Customization Modal */}
+      {showWallpaperModal && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[999] flex items-center justify-center p-4">
+          <div className="bg-[#0b0c0e] border border-stone-800 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl p-6 space-y-5 animate-fade-in font-sans">
+            <div className="flex items-center justify-between border-b border-stone-800/60 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400">
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                    <circle cx="8.5" cy="8.5" r="1.5" />
+                    <polyline points="21 15 16 10 5 21" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-white uppercase tracking-wider">Wallpaper Personalizado</h3>
+                  <p className="text-[10px] text-stone-400">Configure um fundo com imagem ou vídeo</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowWallpaperModal(false)}
+                className="p-1.5 rounded-lg text-stone-500 hover:text-white hover:bg-stone-850 transition"
+              >
+                <X className="h-4.5 w-4.5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div>
+                <span className="block text-[10px] uppercase font-mono tracking-wider text-stone-400 mb-2 font-bold">Designs e Presets Hackers</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWallpaperUrl("https://assets.mixkit.co/videos/preview/mixkit-binary-code-numbers-scrolling-by-32408-large.mp4");
+                      setWallpaperType("video");
+                    }}
+                    className="p-2.5 bg-emerald-950/20 border border-emerald-500/15 hover:border-emerald-500/40 rounded-xl text-left transition text-[10px] text-stone-300 font-mono flex flex-col gap-1"
+                  >
+                    <span className="font-bold text-emerald-400">01. Código Binário (Vídeo)</span>
+                    <span className="text-[8px] text-stone-500">Fluxo contínuo de números verdes</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWallpaperUrl("https://assets.mixkit.co/videos/preview/mixkit-futuristic-tunnel-with-glowing-neon-lights-32986-large.mp4");
+                      setWallpaperType("video");
+                    }}
+                    className="p-2.5 bg-blue-950/20 border border-blue-500/15 hover:border-blue-500/40 rounded-xl text-left transition text-[10px] text-stone-300 font-mono flex flex-col gap-1"
+                  >
+                    <span className="font-bold text-blue-400">02. Túnel de Neon (Vídeo)</span>
+                    <span className="text-[8px] text-stone-500">Túnel futurista em movimento</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWallpaperUrl("https://images.unsplash.com/photo-1510511459019-5dda7724fd87?auto=format&fit=crop&q=80&w=1200");
+                      setWallpaperType("image");
+                    }}
+                    className="p-2.5 bg-stone-900/40 border border-stone-800 hover:border-stone-600 rounded-xl text-left transition text-[10px] text-stone-300 font-mono flex flex-col gap-1"
+                  >
+                    <span className="font-bold text-stone-200">03. Matrix Grid (Imagem)</span>
+                    <span className="text-[8px] text-stone-500">Placa lógica em alta definição</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWallpaperUrl("https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&q=80&w=1200");
+                      setWallpaperType("image");
+                    }}
+                    className="p-2.5 bg-stone-900/40 border border-stone-800 hover:border-stone-600 rounded-xl text-left transition text-[10px] text-stone-300 font-mono flex flex-col gap-1"
+                  >
+                    <span className="font-bold text-emerald-500">04. Terminal Green (Imagem)</span>
+                    <span className="text-[8px] text-stone-500">Dados criptografados estilo hacker</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2.5 border-t border-stone-800/50 pt-3">
+                <span className="block text-[10px] uppercase font-mono tracking-wider text-stone-400 font-bold">Ou Insira sua Própria URL</span>
+                
+                <div>
+                  <label className="block text-[9px] uppercase font-mono tracking-wider text-stone-500 mb-1">URL da Imagem ou do Vídeo (mp4/webm/direct link):</label>
+                  <input
+                    type="text"
+                    className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3.5 py-2 text-xs text-stone-200 focus:outline-none focus:border-emerald-500/40 placeholder-stone-600"
+                    value={wallpaperUrl}
+                    onChange={(e) => setWallpaperUrl(e.target.value)}
+                    placeholder="https://exemplo.com/fundo-cyber.mp4 ou .jpg"
+                  />
+                </div>
+
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer text-[11px] text-stone-300 select-none">
+                    <input
+                      type="radio"
+                      name="wallpaperType"
+                      checked={wallpaperType === "image"}
+                      onChange={() => setWallpaperType("image")}
+                      className="accent-emerald-500 h-3.5 w-3.5"
+                    />
+                    <span>Imagem de Fundo</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-[11px] text-stone-300 select-none">
+                    <input
+                      type="radio"
+                      name="wallpaperType"
+                      checked={wallpaperType === "video"}
+                      onChange={() => setWallpaperType("video")}
+                      className="accent-emerald-500 h-3.5 w-3.5"
+                    />
+                    <span>Vídeo Animado</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center border-t border-stone-800/60 pt-4 font-sans">
+              <button
+                type="button"
+                onClick={() => {
+                  localStorage.removeItem("hackerfy_wallpaper");
+                  localStorage.removeItem("hackerfy_wallpaper_type");
+                  setWallpaperUrl("");
+                  showToast("Fundo padrão redefinido com sucesso!", "success");
+                  setShowWallpaperModal(false);
+                }}
+                disabled={!wallpaperUrl}
+                className="px-4 py-2 rounded-xl bg-rose-950/30 hover:bg-rose-950/60 border border-rose-500/20 text-rose-400 font-bold text-xs transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Deletar Wallpaper"
+              >
+                Deletar Wallpaper
+              </button>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowWallpaperModal(false)}
+                  className="px-4 py-2 rounded-xl bg-stone-900 text-stone-400 hover:text-white transition font-bold text-xs"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (wallpaperUrl) {
+                      localStorage.setItem("hackerfy_wallpaper", wallpaperUrl);
+                      localStorage.setItem("hackerfy_wallpaper_type", wallpaperType);
+                      showToast("Wallpaper personalizado salvo com sucesso!", "success");
+                    }
+                    setShowWallpaperModal(false);
+                  }}
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition"
+                >
+                  Salvar Fundo
+                </button>
+              </div>
             </div>
           </div>
         </div>
