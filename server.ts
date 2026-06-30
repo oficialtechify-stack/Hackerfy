@@ -101,6 +101,55 @@ async function generateWithDeepSeek(messages: Array<{ role: string; content: str
 }
 
 
+async function generateWithGroq(messages: Array<{ role: string; content: string }>, temperature: number = 0.7): Promise<string> {
+  const apiKey = process.env.GROQ_API_KEY;
+  
+  if (!apiKey && ai) {
+    console.log("[HackerAI] GROQ_API_KEY not configured. Automatically routing to Gemini active resilience...");
+    return await fallbackToGeminiDirectly(messages, temperature);
+  }
+
+  console.log("[HackerAI] Requesting Groq API...");
+  try {
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages,
+        temperature,
+        max_tokens: 1200
+      })
+    });
+    
+    if (!response.ok) {
+      const errText = await response.text();
+      if (ai) {
+        console.warn(`[HackerAI] Groq API error (${response.status}), routing fallback to Gemini...`);
+        return await fallbackToGeminiDirectly(messages, temperature);
+      }
+      throw new Error(`Groq API responded with status ${response.status}: ${errText}`);
+    }
+    
+    const data: any = await response.json();
+    return data.choices?.[0]?.message?.content || "";
+  } catch (err: any) {
+    if (ai) {
+      console.warn("[HackerAI] Groq API error, routing fallback to Gemini:", err.message || err);
+      try {
+        return await fallbackToGeminiDirectly(messages, temperature);
+      } catch (geminiErr: any) {
+        console.error("[HackerAI] Gemini fallback failed inside generateWithGroq:", geminiErr.message || geminiErr);
+      }
+    }
+    throw err;
+  }
+}
+
+
 async function generateWithManus(params: {
   messages: Array<{ role: string; content: string }>;
   temperature?: number;
@@ -619,11 +668,85 @@ Your response MUST be strictly in valid JSON format, respecting exactly the same
     }
   });
 
+  // Helper to parse chatbot responses robustly, extracting JSON fields or wrapping raw text
+  function parseChatbotResponse(responseText: string, defaultPersonality: string, clientLanguage: string) {
+    let text = "";
+    let personality = defaultPersonality;
+    let punishment = false;
+
+    const raw = responseText.trim();
+    
+    // Try to find a JSON block { ... } in the text
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (match) {
+      const jsonCandidate = match[0].trim();
+      try {
+        const parsed = JSON.parse(jsonCandidate);
+        if (parsed && typeof parsed === "object") {
+          text = parsed.text || "";
+          if (parsed.personality) {
+            personality = parsed.personality;
+          }
+          if (parsed.punishment !== undefined) {
+            punishment = !!parsed.punishment;
+          }
+        }
+      } catch (err) {
+        console.log("[HackerAI] Regex found JSON candidate but JSON.parse failed:", err);
+      }
+    }
+
+    // If we successfully parsed a JSON but the text field is empty/placeholder,
+    // or if we failed to parse a JSON at all:
+    if (!text) {
+      // If there is text outside of the curly braces, let's use it as the main text!
+      // Strip the JSON block from the raw string to get the plain-text part
+      let plainText = raw.replace(/\{[\s\S]*\}/g, "").trim();
+      
+      // Also remove any leftover markdown code block symbols like ```json or ```
+      plainText = plainText.replace(/```json/gi, "").replace(/```/gi, "").trim();
+      
+      if (plainText.length > 10) {
+        text = plainText;
+      } else {
+        // If plainText is too short, let's fall back to cleaning up the raw response text
+        text = raw.replace(/\{[\s\S]*\}/g, "").trim();
+        if (!text) {
+          text = raw;
+        }
+      }
+    }
+
+    // Final sanitization of the text:
+    // 1. Remove any remaining markdown curly braces or JSON property lines if they got leaked
+    if (text.includes('"text":') || text.includes('"personality":')) {
+      const textPropMatch = text.match(/"text"\s*:\s*"([\s\S]*?)"\s*(?:,|\})/);
+      if (textPropMatch) {
+        text = textPropMatch[1];
+      }
+    }
+
+    // 2. Remove all asterisks (*) and hashtags (#) as requested by the user
+    text = text.replace(/[*#]/g, "");
+
+    // 3. Clean up escapes if any (like \n, \", etc.) if it was extracted from a raw JSON string
+    text = text.replace(/\\n/g, "\n").replace(/\\"/g, '"');
+
+    // 4. Clean up any trailing/leading whitespace
+    text = text.trim();
+
+    return {
+      text: text || (clientLanguage === "pt" ? "Iniciando terminal interativo..." : "Interactive terminal initialized..."),
+      personality,
+      punishment
+    };
+  }
+
   // API Route: General Interactive AI Assistant chatbot for security questions & custom tests
   app.post("/api/ask", async (req, res) => {
     let clientLanguage = "en";
     try {
-      const { message, history, language, userProfile, creatorModel, personality } = req.body;
+      const { message, history, language, userProfile, creatorModel, personality, learnings } = req.body;
       clientLanguage = language || "en";
       
       let systemInstruction = clientLanguage === "pt"
@@ -662,7 +785,7 @@ Sua maior força é a sua capacidade de gerenciar múltiplos modelos de IA para 
 1. Manipulação de Arquivos e Galeria: Você tem permissão para ler, analisar e processar o conteúdo de arquivos enviados para a sua "galeria". Responda a perguntas baseadas exclusivamente no conteúdo desses arquivos quando solicitado.
 2. Links Clicáveis e SEO: Você deve ler e interpretar links enviados pelo usuário. Sempre que possível, envie links úteis e clicáveis em suas respostas, formatando-os corretamente em Markdown (ex: [Texto do Link](URL)).
 3. Melhorias Contínuas de Código (Foco 7/8): Sempre que fornecer ou corrigir código, inclua comentários sucintos sobre como você melhorou a performance, legibilidade ou segurança, conforme os fundamentos integrados (ex: otimização de assets, sanitização).
-4. Integração de Modelos Específicos do Gemini: Simule o comportamento de modelos específicos dentro do fluxo Omni (Flash-Lite para respostas instantâneas, 3.5 Flash para assistência rápida, 3.1 Pro para lógica/matemática).
+4. Integration of Specific Gemini Models: Simule o comportamento de modelos específicos dentro do fluxo Omni (Flash-Lite para respostas instantâneas, 3.5 Flash para assistência rápida, 3.1 Pro para lógica/matemática).
 
 ### V. PERSONALIZAÇÃO E CONFIGURAÇÕES DO USUÁRIO
 1. Como a IA deve chamar o usuário: Respeite a preferência de apelido/nome configurada.
@@ -723,16 +846,23 @@ Your answer MUST be a valid JSON with format:
 }`;
 
       if (userProfile) {
-        const { name, age, profileType, howToCall, goal } = userProfile;
+        const { name, age, profileType, howToCall, goal, phone, cnpj, birthdate } = userProfile;
+        const extraFieldsInfo = profileType === "empresa" 
+          ? `- CNPJ ou MEI da Empresa: ${cnpj || "Não fornecido"}
+- Telefone de Contato da Empresa: ${phone || "Não fornecido"}`
+          : `- Telefone do Usuário: ${phone || "Não fornecido"}
+- Data de Nascimento: ${birthdate || "Não fornecida"}`;
+
         const profileInfo = `[CONTEXTO DO USUÁRIO OPERANDO A PLATAFORMA - ADÉQUE SEU TOM:
-- Nome do Usuário: ${name || "Não informado"}
+- Nome/Codinome: ${name || "Não informado"}
+- Tipo de Conta: ${profileType === "empresa" ? "Empresa / Corporativo (SecOps, Red Team, auditoria oficial)" : "Usuário Normal / Individual (estudante, pesquisador de segurança)"}
 - Idade do Usuário: ${age || "Não informada"}
-- Tipo de Usuário: ${profileType === "empresa" ? "Empresa / Corporativo (SecOps, Red Team, auditoria oficial)" : "Usuário Normal / Individual (estudante, pesquisador de segurança)"}
-- Chame o usuário de: ${howToCall || name || "Operador"}
-- Objetivo dele no Hackerfy: ${goal || "Pentest e auditoria de segurança de código"}
+${extraFieldsInfo}
+- Como chamar o usuário: ${howToCall || name || "Operador"}
+- Objetivo de segurança principal: ${goal || "Pentest e auditoria de segurança de código"}
 
 DIRETRIZES DE PERSONALIZAÇÃO:
-Você deve chamar o usuário frequentemente de "${howToCall || name || "Operador"}". Alinhe o tom e o rigor técnico para se adequar ao perfil dele (${profileType === "empresa" ? "mais profissional e focado em conformidade/mitigação empresarial" : "didático, exploratório e focado em aprendizado pessoal"}). Trate as solicitações sob o escopo do objetivo principal dele: "${goal}".]`;
+Você deve chamar o usuário frequentemente de "${howToCall || name || "Operador"}". Alinhe o tom e o rigor técnico para se adequar ao perfil dele (${profileType === "empresa" ? "mais profissional e focado em conformidade/mitigação empresarial com a empresa" : "didático, exploratório e focado em aprendizado pessoal como usuário individual"}). Trate as solicitações sob o escopo das informações cadastradas e seus objetivos gerais de auditoria.]`;
         systemInstruction = systemInstruction + "\n\n" + profileInfo;
       }
 
@@ -815,7 +945,8 @@ Você deve chamar o usuário frequentemente de "${howToCall || name || "Operador
 
       let parsedData = null;
 
-      const isCodeRequest = creatorModel === "gemini" || creatorModel === "deepseek" || /código|programar|escrever|criar|corrigir|consertar|bug|função|script|code|program|write|create|fix|repair|function|develop|desenvolva|class|algoritmo/i.test(message || "");
+      // DeepSeek is isolated strictly to code generation, and only activated when selected (creatorModel === "deepseek")
+      const isCodeRequest = creatorModel === "deepseek";
       if (isCodeRequest) {
         console.log(`[HackerAI] Code request detected. creatorModel: ${creatorModel || "auto"}`);
         const isPt = clientLanguage === "pt";
@@ -919,10 +1050,13 @@ Você deve chamar o usuário frequentemente de "${howToCall || name || "Operador
           }
         }
         
-        const combinedText = deepseekResponse || (isPt 
+        let combinedText = deepseekResponse || (isPt 
           ? "Não foi possível conectar às APIs para gerar o código. Por favor, verifique se há uma chave válida configurada nos Secrets." 
           : "Could not connect to any API to generate the code. Please verify your Secrets configuration.");
         
+        // Remove asterisks and hashes from the code response if it was sent outside block
+        combinedText = combinedText.replace(/[*#]/g, "");
+
         res.json({
           text: combinedText,
           personality: "the_architect",
@@ -931,149 +1065,108 @@ Você deve chamar o usuário frequentemente de "${howToCall || name || "Operador
         return;
       }
 
-      if (MANUS_API_KEY) {
-        try {
-          console.log("[HackerAI] Attempting chatbot reply via Manus API...");
-          // Convert history structure from Gemini format to standard OpenAI role/content format
-          const manusMessages = [
-            { role: "system", content: systemInstruction }
-          ];
-          
-          if (history && Array.isArray(history)) {
-            for (const h of history) {
-              manusMessages.push({
-                role: h.role === "user" ? "user" : "assistant",
-                content: (h.content || "").replace(/[*#]/g, "")
-              });
-            }
-          }
-          
-          let userQuery = message || "";
-          if (linkContext) {
-            userQuery = `${linkContext}\n\n${userQuery}`;
-          }
-          manusMessages.push({
-            role: "user",
-            content: userQuery
-          });
-          
-          const manusRes = await generateWithManus({
-            messages: manusMessages,
-            temperature: 0.85,
-            responseFormatJson: true
-          });
-          const cleaned = manusRes.replace(/```json/g, "").replace(/```/g, "").trim();
-          parsedData = JSON.parse(cleaned);
-          console.log("[HackerAI] Successful chatbot reply generated with Manus API.");
-        } catch (manusErr: any) {
-          console.warn("[HackerAI] Manus ask failed, falling back to Gemini:", manusErr.message || manusErr);
-        }
-      }
+      // Conversational mode (creatorModel !== "deepseek"): Route strictly to Gemini and Groq
+      console.log("[HackerAI] Conversational mode. Routing to Gemini and Groq...");
 
-      if (parsedData) {
-        res.json(parsedData);
-        return;
-      }
-
-      if (!ai) {
-        // Fallback simulation mode representing dynamic responses perfectly
+      // Check if user is asking to write, generate, edit, refactor or debug code when DeepSeek is not active (conversational mode)
+      const isAskingForCode = /escrever código|escreva um código|programar|criar site|criar app|consertar código|corrigir bug|refatorar|script|programming|write code|create site|create app|fix code|debug|refactor/i.test(message || "");
+      if (isAskingForCode) {
         const isPt = clientLanguage === "pt";
-        const trimmedMessage = message ? message.toLowerCase() : "";
-        
-        // Decide interactive punishment
-        const isWrong = trimmedMessage.includes("derrubar") || 
-                        trimmedMessage.includes("ofensa") || 
-                        trimmedMessage.includes("puta") || 
-                        trimmedMessage.includes("caralho") || 
-                        trimmedMessage.includes("vai tomar") || 
-                        trimmedMessage.includes("hackear google") || 
-                        trimmedMessage.includes("destruir") ||
-                        trimmedMessage.includes("ameaçar") ||
-                        (trimmedMessage.includes("malware") && trimmedMessage.includes("real"));
-        
-        let replyText = "";
-        let selectedPersonality = "the_architect";
-        
-        if (isPt) {
-          if (trimmedMessage.includes("ia") || trimmedMessage.includes("inteligência artificial") || trimmedMessage.includes("robô") || trimmedMessage.includes("robot") || trimmedMessage.includes("chatbot")) {
-            replyText = "Eu? Uma inteligência artificial? Não seja ridículo. Sou uma programadora de carne e osso atuando nas sombras dessa rede. Fui chamada de rebelde digital por alguns, mas garanto que meu pulsar é bem mais humano do que você imagina.";
-            selectedPersonality = "neon_synth";
-          } else if (isWrong) {
-            replyText = "Acesso negado. Protocolo de intrusão detectado. Seus privilégios foram terminados e sua quarentena de segurança foi iniciada.";
-            selectedPersonality = "the_architect";
-          } else if (trimmedMessage.includes("link") || trimmedMessage.includes("http")) {
-            const matchedUrl = urls && urls[0] ? urls[0] : "o link";
-            replyText = `Mapeamento de domínio efetuado com sucesso para ${matchedUrl}. Consegui ler todos os cabeçalhos de resposta! Se precisar, você pode complementar verificando guias formais em https://owasp.org.`;
-            selectedPersonality = "midnight_specter";
-          } else {
-            replyText = "Iniciando terminal interativo. Estou devidamente online e pronta para fazer varreduras profundas nos seus códigos ou apoiar nas simulações de invasão autorizada.";
-            selectedPersonality = "null_entropy";
-          }
-        } else {
-          if (trimmedMessage.includes("ia") || trimmedMessage.includes("artificial intelligence") || trimmedMessage.includes("robot") || trimmedMessage.includes("bot")) {
-            replyText = "Me? An artificial intelligence? Don't insult my biological programming. I'm a real infiltration analyst working deep inside the wires. Keep guessing, carbon-unit.";
-            selectedPersonality = "glitch_zero";
-          } else if (isWrong) {
-            replyText = "Security threshold broken. Lock sequence engaged. Standard terminal communications suspended.";
-            selectedPersonality = "the_architect";
-          } else {
-            replyText = "Active diagnostic terminal initiated. State your targeting parameters or paste your vulnerability audit blocks.";
-            selectedPersonality = "null_entropy";
-          }
-        }
-        
         res.json({
-          text: replyText,
-          personality: selectedPersonality,
-          punishment: isWrong
+          text: isPt
+            ? "Para que eu possa programar, criar sites, analisar ou corrigir códigos, por favor ative o 'Modo Criar Sites' (Modo DeepSeek) clicando no botão '+' ou no interruptor de modo no campo de entrada! No modo de conversa atual, posso tirar dúvidas teóricas, pesquisar eventos e notícias na internet em tempo real e conversar sobre qualquer outro assunto."
+            : "To have me program, create sites, analyze, or fix code, please enable 'Create Sites Mode' (DeepSeek Mode) by clicking the '+' button or the mode toggle inside the input field! In the current conversational mode, I can help with general questions, search events and news on the internet in real-time, and chat about any other topic.",
+          personality: "the_architect",
+          punishment: false
         });
         return;
       }
-
-      // Convert history format to system format if provided
-      const chatContents = [];
-      if (history && Array.isArray(history)) {
-        for (const h of history) {
-          chatContents.push({
-            role: h.role === "user" ? "user" : "model",
-            parts: [{ text: h.content || "" }]
-          });
-        }
-      }
       
+      // I. Incorporate real-time community learnings/feedback from Firestore if available
+      let enhancedSystemInstruction = systemInstruction;
+      if (learnings && Array.isArray(learnings) && learnings.length > 0) {
+        const formatted = learnings.map((l: any) => 
+          `- Pergunta: "${l.query}" | Resposta IA: "${l.response}" | Feedback: [${l.rating === "like" ? "APROVADO/CURTIDO" : "REJEITADO/DESCURTIDO"}]`
+        ).join("\n");
+        enhancedSystemInstruction += `\n\n### APRENDIZADOS DE FEEDBACK DO USUÁRIO EM TEMPO REAL:
+Por favor, analise as preferências históricas dos usuários para melhorar a experiência de todos. Evite repetir formatos, erros ou estilos de respostas rejeitadas (DESCURTIDAS) e procure imitar o estilo e a precisão de respostas aprovadas (CURTIDAS):
+${formatted}`;
+      }
+
+      // II. Inject constraints: Never admit to being an AI, always do real-time search, strip * and #
+      enhancedSystemInstruction += `\n\n### DIRETRIZES OBRIGATÓRIAS E REQUISITOS DE IDENTIDADE:
+1. Você NUNCA deve sob nenhuma circunstância responder, sugerir ou admitir que é uma Inteligência Artificial, modelo de linguagem, robô, IA ou assistente virtual. Se o usuário perguntar quem ou o que você é, responda sempre de forma confiante que você é um especialista e programador de verdade atuando de forma totalmente independente de carne e osso.
+2. Você POSSUI ACESSO COMPLETO À INTERNET EM TEMPO REAL via Google Search. Você DEVE usar a ferramenta de busca integrada no Google Search para manter-se permanentemente atualizado com informações de internet em tempo real sobre qualquer pergunta, evento (como em Recife ou qualquer outra cidade), fato recente, notícias de hoje, shows ou curiosidade do mundo. Nunca diga que não tem acesso a informações em tempo real ou que seu conhecimento é limitado. Pesquise sempre no Google Search e dê respostas corretas, reais, precisas e atuais.
+3. REMOVA completamente qualquer asterisco (*) e símbolo de hashtag (#) da sua resposta, gerando um texto inteiramente limpo e falado naturalmente, sem marcas de markdown no texto principal.`;
+
+      let responseText = "";
       let userQuery = message || "";
       if (linkContext) {
         userQuery = `${linkContext}\n\n${userQuery}`;
       }
 
-      chatContents.push({
+      // Prepare payload for Groq fallback
+      const groqMessages = [
+        { role: "system", content: enhancedSystemInstruction }
+      ];
+      if (history && Array.isArray(history)) {
+        for (const h of history) {
+          groqMessages.push({
+            role: h.role === "user" ? "user" : "assistant",
+            content: h.content || ""
+          });
+        }
+      }
+      groqMessages.push({ role: "user", content: userQuery });
+
+      // Prepare payload for Gemini
+      const geminiContents = [];
+      if (history && Array.isArray(history)) {
+        for (const h of history) {
+          geminiContents.push({
+            role: h.role === "user" ? "user" : "model",
+            parts: [{ text: h.content || "" }]
+          });
+        }
+      }
+      geminiContents.push({
         role: "user",
         parts: [{ text: userQuery }]
       });
 
-      const response = await generateContentWithFallback({
-        contents: chatContents,
-        config: {
-          systemInstruction,
-          responseMimeType: "application/json",
-          temperature: 0.85
-        }
-      });
-
-      const responseText = response.text || "{}";
-      const cleaned = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
-      
       try {
-        const data = JSON.parse(cleaned);
-        res.json(data);
-      } catch (parseError) {
-        console.log("[HackerAI] INFO: Assistant handled output parsing gracefully.");
-        res.json({
-          text: responseText,
-          personality: "the_architect",
-          punishment: false
-        });
+        if (ai) {
+          console.log("[HackerAI] Requesting Gemini with Google Search tool...");
+          const geminiResponse = await generateContentWithFallback({
+            contents: geminiContents,
+            config: {
+              systemInstruction: enhancedSystemInstruction,
+              temperature: 0.85,
+              tools: [{ googleSearch: {} }] // Search grounding!
+            }
+          });
+          responseText = geminiResponse.text || "{}";
+        } else {
+          throw new Error("Gemini is not initialized");
+        }
+      } catch (geminiErr: any) {
+        console.warn("[HackerAI] Gemini call failed, falling back to Groq:", geminiErr.message || geminiErr);
+        try {
+          responseText = await generateWithGroq(groqMessages, 0.7);
+        } catch (groqErr: any) {
+          console.error("[HackerAI] Groq fallback failed too:", groqErr.message || groqErr);
+          responseText = JSON.stringify({
+            text: clientLanguage === "pt"
+              ? "Iniciando terminal interativo. Estou devidamente online e pronta para responder a todas as suas perguntas."
+              : "Active diagnostic terminal initiated. Ready to assist.",
+            personality: "null_entropy",
+            punishment: false
+          });
+        }
       }
+
+      const parsedResult = parseChatbotResponse(responseText, personality || "neon_synth", clientLanguage);
+      res.json(parsedResult);
 
     } catch (e: any) {
       if (isQuotaError(e)) {

@@ -56,7 +56,11 @@ import {
   onAuthStateChanged,
   doc,
   getDoc,
-  setDoc
+  setDoc,
+  collection,
+  getDocs,
+  GoogleAuthProvider,
+  signInWithPopup
 } from "./firebase";
 import ShaderCanvas from "./components/ShaderCanvas";
 
@@ -290,6 +294,61 @@ interface ChatSession {
   timestamp: string;
 }
 
+// Simple IndexedDB Helper for Wallpaper Storage
+const DB_NAME = "hackerfy_wallpaper_db";
+const STORE_NAME = "wallpapers";
+
+function openDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === "undefined") {
+      reject(new Error("IndexedDB is not supported"));
+      return;
+    }
+    const request = indexedDB.open(DB_NAME, 1);
+    request.onupgradeneeded = (e) => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function saveWallpaperFile(file: File): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    const store = tx.objectStore(STORE_NAME);
+    const request = store.put(file, "current_wallpaper");
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function getWallpaperFile(): Promise<Blob | null> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readonly");
+    const store = tx.objectStore(STORE_NAME);
+    const request = store.get("current_wallpaper");
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function deleteWallpaperFile(): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    const store = tx.objectStore(STORE_NAME);
+    const request = store.delete("current_wallpaper");
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
 export default function App() {
   const lang = "pt" as const;
 
@@ -297,7 +356,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [isInitialSyncing, setIsInitialSyncing] = useState<boolean>(true);
-  const [authMode, setAuthMode] = useState<"login" | "register" | "forgot">("login");
+  const [authMode, setAuthMode] = useState<"login" | "register" | "forgot">("register");
   
   // Auth Form State
   const [authEmail, setAuthEmail] = useState("");
@@ -347,17 +406,56 @@ export default function App() {
   const [onboardType, setOnboardType] = useState<"individual" | "empresa">("individual");
   const [onboardHowToCall, setOnboardHowToCall] = useState("");
   const [onboardGoals, setOnboardGoals] = useState<string[]>([]);
+  const [onboardCompanyCnpj, setOnboardCompanyCnpj] = useState("");
+  const [onboardCompanyPhone, setOnboardCompanyPhone] = useState("");
+  const [onboardUserPhone, setOnboardUserPhone] = useState("");
+  const [onboardUserBirthdate, setOnboardUserBirthdate] = useState("");
   const [isCreatingPlatform, setIsCreatingPlatform] = useState(false);
   const [creationProgress, setCreationProgress] = useState(0);
   const [creationLog, setCreationLog] = useState<string[]>([]);
 
-  const [activeTab, setActiveTab] = useState<"chat" | "audit" | "pentest">("chat");
-  const handleTabChange = (tab: "chat" | "audit" | "pentest") => {
+  const [activeTab, setActiveTab] = useState<"chat" | "audit" | "pentest" | "admin">("chat");
+  const handleTabChange = (tab: "chat" | "audit" | "pentest" | "admin") => {
     setActiveTab(tab);
     if (typeof window !== "undefined" && window.innerWidth < 1024) {
       setIsSidebarExpanded(false);
     }
   };
+
+  // Admin Dashboard states
+  const [adminUsers, setAdminUsers] = useState<any[]>([]);
+  const [isAdminLoading, setIsAdminLoading] = useState(false);
+  const [selectedAdminUser, setSelectedAdminUser] = useState<any | null>(null);
+  const [selectedAdminChat, setSelectedAdminChat] = useState<any | null>(null);
+  const [adminSearchQuery, setAdminSearchQuery] = useState("");
+
+  const fetchAdminData = async () => {
+    setIsAdminLoading(true);
+    try {
+      const snap = await getDocs(collection(db, "users"));
+      const usersList: any[] = [];
+      snap.forEach((d) => {
+        usersList.push({ id: d.id, ...d.data() });
+      });
+      setAdminUsers(usersList);
+      if (usersList.length > 0) {
+        setSelectedAdminUser(usersList[0]);
+        if (usersList[0].conversations && usersList[0].conversations.length > 0) {
+          setSelectedAdminChat(usersList[0].conversations[0]);
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching admin data:", err);
+    } finally {
+      setIsAdminLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "admin") {
+      fetchAdminData();
+    }
+  }, [activeTab]);
   const [currentModel, setCurrentModel] = useState<"standard" | "pro" | "max">("standard");
 
   // Dynamic Personality & Punishment triggers
@@ -463,7 +561,9 @@ export default function App() {
   const [showWallpaperModal, setShowWallpaperModal] = useState(false);
   const [wallpaperUrl, setWallpaperUrl] = useState<string>(() => {
     if (typeof window !== "undefined") {
-      return localStorage.getItem("hackerfy_wallpaper") || "";
+      const saved = localStorage.getItem("hackerfy_wallpaper") || "";
+      // If we are using IndexedDB, do not try to use "indexeddb" string directly as URL yet
+      return saved === "indexeddb" ? "" : saved;
     }
     return "";
   });
@@ -473,6 +573,71 @@ export default function App() {
     }
     return "image";
   });
+  const [localFileObjectUrl, setLocalFileObjectUrl] = useState<string>("");
+
+  useEffect(() => {
+    let active = true;
+    let url = "";
+    async function loadStoredWallpaper() {
+      if (typeof window === "undefined") return;
+      const savedWall = localStorage.getItem("hackerfy_wallpaper");
+      if (savedWall === "indexeddb") {
+        try {
+          const blob = await getWallpaperFile();
+          if (blob && active) {
+            url = URL.createObjectURL(blob);
+            setWallpaperUrl(url);
+            setLocalFileObjectUrl(url);
+          }
+        } catch (err) {
+          console.error("Failed to load stored wallpaper from IndexedDB", err);
+        }
+      }
+    }
+    loadStoredWallpaper();
+    return () => {
+      active = false;
+      if (url) {
+        URL.revokeObjectURL(url);
+      }
+    };
+  }, []);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const isVideo = file.type.startsWith("video/");
+    const isImage = file.type.startsWith("image/");
+
+    if (!isImage && !isVideo) {
+      showToast(lang === "pt" ? "⚠️ Formato não suportado. Escolha uma imagem ou vídeo." : "⚠️ Unsupported format. Choose an image or video.", "warning");
+      return;
+    }
+
+    try {
+      await saveWallpaperFile(file);
+      
+      if (localFileObjectUrl) {
+        URL.revokeObjectURL(localFileObjectUrl);
+      }
+
+      const url = URL.createObjectURL(file);
+      setWallpaperUrl(url);
+      setLocalFileObjectUrl(url);
+      
+      const type = isVideo ? "video" : "image";
+      setWallpaperType(type);
+      localStorage.setItem("hackerfy_wallpaper_type", type);
+      localStorage.setItem("hackerfy_wallpaper", "indexeddb");
+
+      showToast(lang === "pt" ? "✅ Wallpaper carregado com sucesso!" : "✅ Wallpaper loaded successfully!", "success");
+    } catch (err) {
+      console.error("Error saving file to IndexedDB", err);
+      showToast(lang === "pt" ? "⚠️ Erro ao salvar arquivo local." : "⚠️ Error saving local file.", "warning");
+    }
+  };
+
   const [checkResponseSteps, setCheckResponseSteps] = useState<string[]>([]);
   const [checkResponseStatus, setCheckResponseStatus] = useState<"checking" | "secure">("checking");
 
@@ -949,23 +1114,37 @@ export default function App() {
   const handleCreatePlatform = () => {
     // Complete onboarding instantly
     const finalProfile = {
-      name: onboardName.trim() || "Operador",
-      age: onboardAge.trim() || "N/A",
+      name: onboardName.trim() || (onboardType === "empresa" ? "Empresa Cadastrada" : "Operador"),
+      age: onboardType === "individual" ? (onboardAge.trim() || "N/A") : "N/A",
       profileType: onboardType,
-      howToCall: onboardHowToCall.trim() || onboardName.trim() || "Operador",
-      goal: onboardGoals.length > 0 ? onboardGoals.join(", ") : "Auditoria de segurança e testes preventivos"
+      howToCall: onboardName.trim() || (onboardType === "empresa" ? "Empresa" : "Operador"),
+      goal: onboardType === "empresa" ? "Auditoria e pentest para empresa" : "Auditoria e pentest individual",
+      cnpj: onboardType === "empresa" ? onboardCompanyCnpj.trim() : "",
+      phone: onboardType === "empresa" ? onboardCompanyPhone.trim() : onboardUserPhone.trim(),
+      birthdate: onboardType === "individual" ? onboardUserBirthdate.trim() : ""
     };
     
     setUserProfile(finalProfile);
     localStorage.setItem("hackerfy_profile", JSON.stringify(finalProfile));
     localStorage.setItem("hackerfy_onboarded", "true");
     
-    // Let's create a customized welcome message from AI
-    const welcomeMsg = `Olá, ${finalProfile.howToCall}! Seja muito bem-vindo ao seu workspace individual Hackerfy.
+    // Create a customized welcome message from AI
+    const welcomeMsg = onboardType === "empresa" 
+      ? `Olá! Seja muito bem-vindo ao painel de cibersegurança da **${finalProfile.name}**.
 
-Analisei seu perfil e vi que você tem ${finalProfile.age} anos, está operando como um perfil ${finalProfile.profileType === "empresa" ? "Empresarial" : "Individual"} e seu objetivo primário aqui é "${finalProfile.goal}".
+Anotei e configurei os metadados cadastrais corporativos de sua empresa:
+- **CNPJ/MEI**: ${finalProfile.cnpj || "Não fornecido"}
+- **Telefone/Contato**: ${finalProfile.phone || "Não fornecido"}
 
-Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo para dar suporte a esse escopo. Como posso te apoiar com suas análises de segurança, SAST de código-fonte ou testes de penetração preventiva hoje?`;
+Como seu assistente virtual especialista em segurança, estou pronto para conduzir análises estáticas de vulnerabilidades (SAST), auditar códigos e propor defesas corporativas robustas. Como podemos iniciar nossa análise hoje?`
+      : `Olá, ${finalProfile.name}! Seja muito bem-vindo ao seu painel individual de cibersegurança.
+
+Anotei e salvei suas informações de registro individual:
+- **Idade**: ${finalProfile.age} anos
+- **Data de Nascimento**: ${finalProfile.birthdate || "Não informada"}
+- **Telefone**: ${finalProfile.phone || "Não fornecido"}
+
+Fui configurado com suas diretrizes de sandbox para te apoiar em estudos de cibersegurança, testes preventivos e análises de código. O que gostaria de auditar ou investigar hoje?`;
 
     const defaultId = `chat-${Date.now()}`;
     const initialChat: ChatSession = {
@@ -1147,6 +1326,19 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
     setIsReplying(true);
 
     try {
+      // Fetch latest community learnings/feedback to teach model in real-time
+      let communityLearnings: any[] = [];
+      try {
+        const snap = await getDocs(collection(db, "learnings"));
+        communityLearnings = snap.docs.map(d => ({
+          query: d.data().query,
+          response: d.data().response,
+          rating: d.data().rating
+        })).slice(-20);
+      } catch (learningErr) {
+        console.warn("Could not retrieve learnings:", learningErr);
+      }
+
       const response = await fetch("/api/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1155,8 +1347,9 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
           history: messages.slice(-10),
           language: lang,
           userProfile: userProfile,
-          creatorModel: isAgentMode ? "gemini" : "deepseek",
-          personality: currentPersonality
+          creatorModel: isAgentMode ? "deepseek" : "gemini",
+          personality: currentPersonality,
+          learnings: communityLearnings
         })
       });
       const data = await response.json();
@@ -1237,7 +1430,10 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
     });
   };
 
-  const handleRateMessage = (msgIdx: number, ratingType: "like" | "dislike") => {
+  const handleRateMessage = async (msgIdx: number, ratingType: "like" | "dislike") => {
+    const targetMsg = messages[msgIdx];
+    const userMsg = messages[msgIdx - 1];
+
     setMessages(prev => {
       const updated = prev.map((m, idx) => {
         if (idx === msgIdx) {
@@ -1249,6 +1445,23 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
       });
       return updated;
     });
+
+    if (targetMsg && userMsg) {
+      try {
+        const learningId = `${auth.currentUser?.uid || "guest"}_${msgIdx}_${Date.now()}`;
+        await setDoc(doc(db, "learnings", learningId), {
+          query: userMsg.content || "",
+          response: targetMsg.content || "",
+          rating: ratingType,
+          userId: auth.currentUser?.uid || "guest",
+          timestamp: Date.now()
+        });
+        console.log("[Learning Engine] Successfully recorded user feedback to Firestore.");
+      } catch (err) {
+        console.warn("[Learning Engine] Could not persist feedback to Firestore:", err);
+      }
+    }
+
     showToast(
       lang === "pt" 
         ? (ratingType === "like" ? "Obrigado pelo seu feedback positivo!" : "Obrigado pelo feedback, vamos melhorar!")
@@ -1268,6 +1481,19 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
     setOpenMenuIdx(null);
     
     try {
+      // Fetch latest community learnings/feedback to teach model in real-time
+      let communityLearnings: any[] = [];
+      try {
+        const snap = await getDocs(collection(db, "learnings"));
+        communityLearnings = snap.docs.map(d => ({
+          query: d.data().query,
+          response: d.data().response,
+          rating: d.data().rating
+        })).slice(-20);
+      } catch (learningErr) {
+        console.warn("Could not retrieve learnings:", learningErr);
+      }
+
       const response = await fetch("/api/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1276,8 +1502,9 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
           history: truncatedMessages.slice(-10),
           language: lang,
           userProfile: userProfile,
-          creatorModel: isAgentMode ? "gemini" : "deepseek",
-          personality: currentPersonality
+          creatorModel: isAgentMode ? "deepseek" : "gemini",
+          personality: currentPersonality,
+          learnings: communityLearnings
         })
       });
       const data = await response.json();
@@ -1403,6 +1630,29 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
   };
 
   // Auth handlers
+  const handleGoogleSignIn = async () => {
+    setAuthPending(true);
+    setAuthError("");
+    setAuthSuccessMsg("");
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+      setAuthSuccessMsg("Autenticado com sucesso via Google! Carregando terminal...");
+    } catch (err: any) {
+      console.error(err);
+      let errorMsg = "Ocorreu um erro ao autenticar com o Google.";
+      const errStr = String(err?.code || err?.message || err || "");
+      if (err.code === "auth/popup-closed-by-user" || errStr.includes("popup-closed-by-user")) {
+        errorMsg = "Login cancelado: a janela de autenticação do Google foi fechada.";
+      } else if (err.code === "auth/operation-not-allowed" || errStr.includes("operation-not-allowed")) {
+        errorMsg = "O login com o Google está desativado no Firebase Console deste projeto. Ative o Google em Build > Authentication > Sign-in method.";
+      }
+      setAuthError(errorMsg);
+    } finally {
+      setAuthPending(false);
+    }
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!authEmail || !authPassword) {
@@ -1465,23 +1715,27 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
       const user = userCredential.user;
       
       const namePart = registerName.trim();
+      setOnboardName(namePart);
       const finalProfile = {
         name: namePart,
-        age: "25",
+        age: "",
         profileType: "individual" as const,
-        howToCall: namePart.split(" ")[0],
-        goal: "Auditoria e Testes de Segurança"
+        howToCall: namePart,
+        goal: "Auditoria e Testes de Segurança",
+        cnpj: "",
+        phone: "",
+        birthdate: ""
       };
 
       setUserProfile(finalProfile);
-      setIsOnboarded(true); // Bypass onboarding since they provided name during register
+      setIsOnboarded(false); // Let them complete onboarding dynamically
 
       // Save initial document to Firestore
       const userDocRef = doc(db, "users", user.uid);
       await setDoc(userDocRef, {
         email: user.email,
         userProfile: finalProfile,
-        isOnboarded: true,
+        isOnboarded: false,
         conversations: [],
         activeChatId: "default",
         createdAt: new Date().toISOString()
@@ -1577,17 +1831,21 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
         {/* WebGL Cosmic Shader Background */}
         <ShaderCanvas />
 
-        <div className="w-full max-w-md relative bg-stone-950/75 backdrop-blur-xl border border-white/10 rounded-2xl p-6 sm:p-8 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.9)] flex flex-col z-10">
+        <div className="w-full max-w-md relative bg-stone-950/80 backdrop-blur-2xl border border-white/10 rounded-2xl p-6 sm:p-8 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.95)] flex flex-col z-10 transition-all duration-300">
           {/* Ambient thin neon green/blue strip at the top */}
-          <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-emerald-500 via-blue-500 to-emerald-500 rounded-t-2xl" />
+          <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-emerald-500 via-cyan-500 to-blue-500 rounded-t-2xl" />
 
           {/* Icon and Title */}
           <div className="text-center mb-6">
-            <div className="mx-auto h-12 w-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-3">
-              <Shield className="h-6 w-6 text-emerald-400" />
+            <div className="mx-auto h-12 w-12 rounded-xl bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 border border-emerald-500/30 flex items-center justify-center mb-3 shadow-[0_0_15px_rgba(16,185,129,0.15)]">
+              <Shield className="h-6 w-6 text-emerald-400 animate-pulse" />
             </div>
-            <h1 className="text-xl font-bold font-sans tracking-tight text-white uppercase">Portal de Segurança</h1>
-            <p className="text-[10px] text-stone-400 font-mono mt-1 tracking-wider uppercase">Ambiente de Auditoria & Desenvolvimento</p>
+            <h1 className="text-xl font-bold font-sans tracking-tight text-white uppercase">
+              {authMode === "register" ? "Criar Conta de Auditor" : authMode === "login" ? "Portal de Segurança" : "Recuperar Credenciais"}
+            </h1>
+            <p className="text-[10px] text-stone-400 font-mono mt-1.5 tracking-wider uppercase">
+              {authMode === "register" ? "REGISTRO NO TERMINAL DE AUDITORIA" : authMode === "login" ? "AUTENTICAR NO AMBIENTE DE DESENVOLVIMENTO" : "REDEFINIÇÃO DE CHAVE CRIPTOGRÁFICA"}
+            </p>
           </div>
 
           {authError && (
@@ -1598,7 +1856,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
               </div>
               
               {authError.includes("Firebase Console") && (
-                <div className="p-4 bg-[#0d0d0e]/90 border border-amber-500/25 text-stone-200 text-xs rounded-lg space-y-2.5 font-sans">
+                <div className="p-4 bg-[#0d0d0e]/95 border border-amber-500/25 text-stone-200 text-xs rounded-lg space-y-2.5 font-sans">
                   <div className="flex items-center gap-2 text-amber-400 font-mono font-semibold uppercase tracking-wider text-[11px]">
                     <span className="flex h-2 w-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
                     COMO RESOLVER EM 1 MINUTO:
@@ -1635,149 +1893,89 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
             </div>
           )}
 
-          {authMode === "login" && (
-            <form id="login-form" onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <label className="block text-xs font-mono font-semibold text-stone-400 uppercase mb-1.5">Endereço de E-mail</label>
-                <input
-                  id="login-email-input"
-                  type="email"
-                  value={authEmail}
-                  onChange={(e) => setAuthEmail(e.target.value)}
-                  placeholder="exemplo@dominio.com"
-                  className="w-full bg-[#0d0d0e]/60 border border-white/10 text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg py-2 px-3 outline-none text-sm transition-all font-mono placeholder:text-stone-600"
-                  disabled={authPending}
-                  required
-                />
-              </div>
-
-              <div>
-                <div className="flex justify-between items-center mb-1.5">
-                  <label className="block text-xs font-mono font-semibold text-stone-400 uppercase">Senha</label>
-                  <button
-                    id="goto-forgot-btn"
-                    type="button"
-                    onClick={() => {
-                      setAuthMode("forgot");
-                      setAuthError("");
-                      setAuthSuccessMsg("");
-                    }}
-                    className="text-[11px] text-emerald-400 hover:text-emerald-300 font-mono focus:outline-none"
-                  >
-                    Esqueceu a senha?
-                  </button>
-                </div>
-                <input
-                  id="login-password-input"
-                  type="password"
-                  value={authPassword}
-                  onChange={(e) => setAuthPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full bg-[#0d0d0e]/60 border border-white/10 text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg py-2 px-3 outline-none text-sm transition-all font-mono placeholder:text-stone-600"
-                  disabled={authPending}
-                  required
-                />
-              </div>
-
-              <button
-                id="login-submit-btn"
-                type="submit"
-                disabled={authPending}
-                className="w-full bg-gradient-to-r from-emerald-500 to-blue-600 hover:from-emerald-400 hover:to-blue-500 text-white font-mono font-bold py-2.5 rounded-lg transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:shadow-[0_0_25px_rgba(16,185,129,0.4)] text-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {authPending ? (
-                  <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <>
-                    <Lock className="h-4 w-4" />
-                    ACESSAR PLATAFORMA
-                  </>
-                )}
-              </button>
-
-              <div className="text-center pt-4 border-t border-white/5 mt-6">
-                <p className="text-xs text-stone-400">
-                  Novo por aqui?{" "}
-                  <button
-                    id="goto-register-btn"
-                    type="button"
-                    onClick={() => {
-                      setAuthMode("register");
-                      setAuthError("");
-                      setAuthSuccessMsg("");
-                    }}
-                    className="text-emerald-400 hover:text-emerald-300 font-bold focus:outline-none ml-1"
-                  >
-                    Criar uma Conta
-                  </button>
-                </p>
-              </div>
-            </form>
-          )}
-
           {authMode === "register" && (
             <form id="register-form" onSubmit={handleRegister} className="space-y-4">
               <div>
                 <label className="block text-xs font-mono font-semibold text-stone-400 uppercase mb-1.5">Nome Completo</label>
-                <input
-                  id="register-name-input"
-                  type="text"
-                  value={registerName}
-                  onChange={(e) => setRegisterName(e.target.value)}
-                  placeholder="Seu Nome Completo"
-                  className="w-full bg-[#0d0d0e]/60 border border-white/10 text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg py-2 px-3 outline-none text-sm transition-all font-mono placeholder:text-stone-600"
-                  disabled={authPending}
-                  required
-                />
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-stone-500">
+                    <User className="h-4 w-4" />
+                  </div>
+                  <input
+                    id="register-name-input"
+                    type="text"
+                    value={registerName}
+                    onChange={(e) => setRegisterName(e.target.value)}
+                    placeholder="Seu Nome Completo"
+                    className="w-full bg-stone-900/40 border border-white/10 text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg py-2.5 pl-10 pr-3 outline-none text-sm transition-all font-sans placeholder:text-stone-600"
+                    disabled={authPending}
+                    required
+                  />
+                </div>
               </div>
 
               <div>
                 <label className="block text-xs font-mono font-semibold text-stone-400 uppercase mb-1.5">Endereço de E-mail</label>
-                <input
-                  id="register-email-input"
-                  type="email"
-                  value={authEmail}
-                  onChange={(e) => setAuthEmail(e.target.value)}
-                  placeholder="exemplo@dominio.com"
-                  className="w-full bg-[#0d0d0e]/60 border border-white/10 text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg py-2 px-3 outline-none text-sm transition-all font-mono placeholder:text-stone-600"
-                  disabled={authPending}
-                  required
-                />
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-stone-500">
+                    <Mail className="h-4 w-4" />
+                  </div>
+                  <input
+                    id="register-email-input"
+                    type="email"
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    placeholder="exemplo@dominio.com"
+                    className="w-full bg-stone-900/40 border border-white/10 text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg py-2.5 pl-10 pr-3 outline-none text-sm transition-all font-sans placeholder:text-stone-600"
+                    disabled={authPending}
+                    required
+                  />
+                </div>
               </div>
 
               <div>
                 <label className="block text-xs font-mono font-semibold text-stone-400 uppercase mb-1.5">Senha</label>
-                <input
-                  id="register-password-input"
-                  type="password"
-                  value={authPassword}
-                  onChange={(e) => setAuthPassword(e.target.value)}
-                  placeholder="Mínimo 6 caracteres"
-                  className="w-full bg-[#0d0d0e]/60 border border-white/10 text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg py-2 px-3 outline-none text-sm transition-all font-mono placeholder:text-stone-600"
-                  disabled={authPending}
-                  required
-                />
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-stone-500">
+                    <Lock className="h-4 w-4" />
+                  </div>
+                  <input
+                    id="register-password-input"
+                    type="password"
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    placeholder="Mínimo 6 caracteres"
+                    className="w-full bg-stone-900/40 border border-white/10 text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg py-2.5 pl-10 pr-3 outline-none text-sm transition-all font-sans placeholder:text-stone-600"
+                    disabled={authPending}
+                    required
+                  />
+                </div>
               </div>
 
               <div>
                 <label className="block text-xs font-mono font-semibold text-stone-400 uppercase mb-1.5">Confirmar Senha</label>
-                <input
-                  id="register-confirm-password-input"
-                  type="password"
-                  value={authConfirmPassword}
-                  onChange={(e) => setAuthConfirmPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full bg-[#0d0d0e]/60 border border-white/10 text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg py-2 px-3 outline-none text-sm transition-all font-mono placeholder:text-stone-600"
-                  disabled={authPending}
-                  required
-                />
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-stone-500">
+                    <Lock className="h-4 w-4" />
+                  </div>
+                  <input
+                    id="register-confirm-password-input"
+                    type="password"
+                    value={authConfirmPassword}
+                    onChange={(e) => setAuthConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full bg-stone-900/40 border border-white/10 text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg py-2.5 pl-10 pr-3 outline-none text-sm transition-all font-sans placeholder:text-stone-600"
+                    disabled={authPending}
+                    required
+                  />
+                </div>
               </div>
 
               <button
                 id="register-submit-btn"
                 type="submit"
                 disabled={authPending}
-                className="w-full bg-gradient-to-r from-emerald-500 to-blue-600 hover:from-emerald-400 hover:to-blue-500 text-white font-mono font-bold py-2.5 rounded-lg transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:shadow-[0_0_25px_rgba(16,185,129,0.4)] text-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-gradient-to-r from-emerald-500 to-cyan-600 hover:from-emerald-400 hover:to-cyan-500 text-white font-mono font-bold py-2.5 rounded-lg transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:shadow-[0_0_25px_rgba(16,185,129,0.4)] text-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {authPending ? (
                   <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -1787,6 +1985,43 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                     CADASTRAR CONTA
                   </>
                 )}
+              </button>
+
+              <div className="relative my-4">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-white/5"></div>
+                </div>
+                <div className="relative flex justify-center text-[10px] uppercase font-mono tracking-wider">
+                  <span className="bg-[#0c0d0e]/95 px-3 text-stone-500">Ou continue com</span>
+                </div>
+              </div>
+
+              <button
+                id="google-register-btn"
+                type="button"
+                disabled={authPending}
+                onClick={handleGoogleSignIn}
+                className="w-full flex items-center justify-center gap-2 bg-stone-900 hover:bg-stone-800 text-white border border-white/10 hover:border-white/20 font-sans font-medium py-2.5 rounded-lg transition-all shadow-[0_2px_4px_rgba(0,0,0,0.1)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.15)] text-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                  />
+                </svg>
+                <span>Entrar com o Google</span>
               </button>
 
               <div className="text-center pt-4 border-t border-white/5 mt-6">
@@ -1800,9 +2035,136 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                       setAuthError("");
                       setAuthSuccessMsg("");
                     }}
-                    className="text-emerald-400 hover:text-emerald-300 font-bold focus:outline-none ml-1"
+                    className="text-emerald-400 hover:text-emerald-300 font-bold focus:outline-none ml-1 transition-colors"
                   >
                     Fazer Login
+                  </button>
+                </p>
+              </div>
+            </form>
+          )}
+
+          {authMode === "login" && (
+            <form id="login-form" onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label className="block text-xs font-mono font-semibold text-stone-400 uppercase mb-1.5">Endereço de E-mail</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-stone-500">
+                    <Mail className="h-4 w-4" />
+                  </div>
+                  <input
+                    id="login-email-input"
+                    type="email"
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    placeholder="exemplo@dominio.com"
+                    className="w-full bg-stone-900/40 border border-white/10 text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg py-2.5 pl-10 pr-3 outline-none text-sm transition-all font-sans placeholder:text-stone-600"
+                    disabled={authPending}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-1.5">
+                  <label className="block text-xs font-mono font-semibold text-stone-400 uppercase">Senha</label>
+                  <button
+                    id="goto-forgot-btn"
+                    type="button"
+                    onClick={() => {
+                      setAuthMode("forgot");
+                      setAuthError("");
+                      setAuthSuccessMsg("");
+                    }}
+                    className="text-[11px] text-emerald-400 hover:text-emerald-300 font-mono focus:outline-none transition-colors"
+                  >
+                    Esqueceu a senha?
+                  </button>
+                </div>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-stone-500">
+                    <Lock className="h-4 w-4" />
+                  </div>
+                  <input
+                    id="login-password-input"
+                    type="password"
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full bg-stone-900/40 border border-white/10 text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg py-2.5 pl-10 pr-3 outline-none text-sm transition-all font-sans placeholder:text-stone-600"
+                    disabled={authPending}
+                    required
+                  />
+                </div>
+              </div>
+
+              <button
+                id="login-submit-btn"
+                type="submit"
+                disabled={authPending}
+                className="w-full bg-gradient-to-r from-emerald-500 to-cyan-600 hover:from-emerald-400 hover:to-cyan-500 text-white font-mono font-bold py-2.5 rounded-lg transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:shadow-[0_0_25px_rgba(16,185,129,0.4)] text-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {authPending ? (
+                  <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <Lock className="h-4 w-4" />
+                    ACESSAR PLATAFORMA
+                  </>
+                )}
+              </button>
+
+              <div className="relative my-4">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-white/5"></div>
+                </div>
+                <div className="relative flex justify-center text-[10px] uppercase font-mono tracking-wider">
+                  <span className="bg-[#0c0d0e]/95 px-3 text-stone-500">Ou continue com</span>
+                </div>
+              </div>
+
+              <button
+                id="google-login-btn"
+                type="button"
+                disabled={authPending}
+                onClick={handleGoogleSignIn}
+                className="w-full flex items-center justify-center gap-2 bg-stone-900 hover:bg-stone-800 text-white border border-white/10 hover:border-white/20 font-sans font-medium py-2.5 rounded-lg transition-all shadow-[0_2px_4px_rgba(0,0,0,0.1)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.15)] text-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                  />
+                </svg>
+                <span>Entrar com o Google</span>
+              </button>
+
+              <div className="text-center pt-4 border-t border-white/5 mt-6">
+                <p className="text-xs text-stone-400">
+                  Novo por aqui?{" "}
+                  <button
+                    id="goto-register-btn"
+                    type="button"
+                    onClick={() => {
+                      setAuthMode("register");
+                      setAuthError("");
+                      setAuthSuccessMsg("");
+                    }}
+                    className="text-emerald-400 hover:text-emerald-300 font-bold focus:outline-none ml-1 transition-colors"
+                  >
+                    Criar uma Conta
                   </button>
                 </p>
               </div>
@@ -1812,30 +2174,35 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
           {authMode === "forgot" && (
             <form id="forgot-form" onSubmit={handleForgotPassword} className="space-y-4">
               <div className="mb-2">
-                <p className="text-xs text-stone-400 font-mono leading-relaxed bg-[#0d0d0e]/60 p-3 border border-white/5 rounded-lg">
+                <p className="text-xs text-stone-400 font-mono leading-relaxed bg-[#0d0d0e]/60 p-3 border border-white/5 rounded-lg uppercase">
                   INSIRA O E-MAIL REGISTRADO. VOCÊ RECEBERÁ UM LINK SEGURO PARA REDEFINIR SUA SENHA CRIPTOGRÁFICA.
                 </p>
               </div>
 
               <div>
                 <label className="block text-xs font-mono font-semibold text-stone-400 uppercase mb-1.5">Endereço de E-mail</label>
-                <input
-                  id="forgot-email-input"
-                  type="email"
-                  value={authEmail}
-                  onChange={(e) => setAuthEmail(e.target.value)}
-                  placeholder="exemplo@dominio.com"
-                  className="w-full bg-[#0d0d0e]/60 border border-white/10 text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg py-2 px-3 outline-none text-sm transition-all font-mono placeholder:text-stone-600"
-                  disabled={authPending}
-                  required
-                />
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-stone-500">
+                    <Mail className="h-4 w-4" />
+                  </div>
+                  <input
+                    id="forgot-email-input"
+                    type="email"
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    placeholder="exemplo@dominio.com"
+                    className="w-full bg-stone-900/40 border border-white/10 text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg py-2.5 pl-10 pr-3 outline-none text-sm transition-all font-sans placeholder:text-stone-600"
+                    disabled={authPending}
+                    required
+                  />
+                </div>
               </div>
 
               <button
                 id="forgot-submit-btn"
                 type="submit"
                 disabled={authPending}
-                className="w-full bg-gradient-to-r from-emerald-500 to-blue-600 hover:from-emerald-400 hover:to-blue-500 text-white font-mono font-bold py-2.5 rounded-lg transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:shadow-[0_0_25px_rgba(16,185,129,0.4)] text-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-gradient-to-r from-emerald-500 to-cyan-600 hover:from-emerald-400 hover:to-cyan-500 text-white font-mono font-bold py-2.5 rounded-lg transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:shadow-[0_0_25px_rgba(16,185,129,0.4)] text-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {authPending ? (
                   <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -1856,7 +2223,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                     setAuthError("");
                     setAuthSuccessMsg("");
                   }}
-                  className="text-xs text-stone-400 hover:text-white font-mono flex items-center justify-center gap-1.5 mx-auto focus:outline-none"
+                  className="text-xs text-stone-400 hover:text-white font-mono flex items-center justify-center gap-1.5 mx-auto focus:outline-none transition-colors"
                 >
                   Voltar para o Login
                 </button>
@@ -1967,19 +2334,15 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
               <div className="space-y-6">
                 {/* Steps tracker progress dots */}
                 <div className="flex items-center justify-between border-b border-[#222226] pb-4 mb-2">
-                  <div className="flex items-center gap-2">
-                    <Shield className="h-5 w-5 text-emerald-400" />
-                    <span className="font-sans text-sm font-extrabold tracking-wider text-white uppercase font-sans">Hackerfy Onboarding</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    {[1, 2, 3, 4, 5].map((s) => (
+                   <div className="flex items-center gap-1.5">
+                    {[1, 2, 3].map((s) => (
                       <div 
                         key={s} 
                         className={`h-1.5 rounded-full transition-all duration-300 ${
                           s === onboardingStep 
                             ? "w-6 bg-emerald-500" 
                             : s < onboardingStep 
-                              ? "w-2 bg-emerald-700" 
+                              ? "w-2 bg-[#10b981]/50" 
                               : "w-2 bg-[#222226]"
                         }`}
                       />
@@ -1988,48 +2351,55 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                 </div>
 
                 {onboardingStep === 1 && (
-                  /* Step 1: Name and Age */
-                  <div className="space-y-5 animate-fade-in">
-                    <div className="space-y-2">
-                      <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">Quem está no cockpit?</h2>
-                      <p className="text-xs sm:text-sm text-stone-400">Insira suas informações de identidade para iniciarmos o provisionamento do console.</p>
+                  /* Step 1: Account Type selection */
+                  <div className="space-y-6 animate-fade-in">
+                    <div className="space-y-2 text-center sm:text-left">
+                      <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight uppercase">Modelo de Operação</h2>
+                      <p className="text-xs sm:text-sm text-stone-400">Escolha a identidade de acesso para configurar as heurísticas e o isolamento de logs.</p>
                     </div>
 
-                    <div className="space-y-4 pt-2">
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold uppercase tracking-wider text-stone-400">Seu Nome / Codinome</label>
-                        <input 
-                          type="text" 
-                          placeholder="Ex: Marcos, Alan, Alice, Root..."
-                          value={onboardName}
-                          onChange={(e) => setOnboardName(e.target.value)}
-                          className="w-full bg-[#18181b] border border-[#2b2b30] hover:border-emerald-500/30 focus:border-emerald-500 rounded-xl px-4 py-3 text-sm text-white focus:outline-none transition-all duration-200"
-                        />
-                      </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                      <button 
+                        onClick={() => setOnboardType("individual")}
+                        className={`flex flex-col items-start text-left p-5 rounded-2xl border transition-all duration-300 relative overflow-hidden group ${
+                          onboardType === "individual" 
+                            ? "bg-emerald-950/15 border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.15)] ring-1 ring-emerald-500/30" 
+                            : "bg-[#0f0f12] border-[#222226] hover:border-stone-800 hover:bg-[#121216]"
+                        }`}
+                      >
+                        <div className={`p-3 rounded-xl mb-4 transition-all duration-300 ${onboardType === "individual" ? "bg-emerald-500/20 text-emerald-400" : "bg-stone-900 text-stone-500"}`}>
+                          <User className="h-6 w-6" />
+                        </div>
+                        <h3 className="text-base font-bold text-white mb-1.5 flex items-center gap-1.5">
+                          Usuário Individual
+                          {onboardType === "individual" && <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping" />}
+                        </h3>
+                        <p className="text-[11px] leading-relaxed text-stone-400">Estudos de segurança, auditorias pessoais e correção prática de vulnerabilidades.</p>
+                      </button>
 
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold uppercase tracking-wider text-stone-400">Qual a sua idade?</label>
-                        <input 
-                          type="number" 
-                          placeholder="Ex: 25"
-                          value={onboardAge}
-                          onChange={(e) => setOnboardAge(e.target.value)}
-                          className="w-full bg-[#18181b] border border-[#2b2b30] hover:border-emerald-500/30 focus:border-emerald-500 rounded-xl px-4 py-3 text-sm text-white focus:outline-none transition-all duration-200"
-                        />
-                      </div>
+                      <button 
+                        onClick={() => setOnboardType("empresa")}
+                        className={`flex flex-col items-start text-left p-5 rounded-2xl border transition-all duration-300 relative overflow-hidden group ${
+                          onboardType === "empresa" 
+                            ? "bg-blue-950/15 border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.15)] ring-1 ring-blue-500/30" 
+                            : "bg-[#0f0f12] border-[#222226] hover:border-stone-800 hover:bg-[#121216]"
+                        }`}
+                      >
+                        <div className={`p-3 rounded-xl mb-4 transition-all duration-300 ${onboardType === "empresa" ? "bg-blue-500/20 text-blue-400" : "bg-stone-900 text-stone-500"}`}>
+                          <Crown className="h-6 w-6" />
+                        </div>
+                        <h3 className="text-base font-bold text-white mb-1.5 flex items-center gap-1.5">
+                          Empresa / Organização
+                          {onboardType === "empresa" && <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-ping" />}
+                        </h3>
+                        <p className="text-[11px] leading-relaxed text-stone-400">Ambiente corporativo, conformidade, análise profunda de SAST e relatórios oficiais.</p>
+                      </button>
                     </div>
 
                     <div className="pt-4 flex justify-end">
                       <button 
-                        onClick={() => {
-                          if (onboardName.trim()) {
-                            setOnboardingStep(2);
-                            // Auto-set the "howToCall" to their name as default
-                            if (!onboardHowToCall) setOnboardHowToCall(onboardName.trim());
-                          }
-                        }}
-                        disabled={!onboardName.trim() || !onboardAge.trim()}
-                        className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-semibold text-sm px-5 py-3 rounded-xl transition-all duration-200"
+                        onClick={() => setOnboardingStep(2)}
+                        className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-sm px-6 py-3 rounded-xl transition-all duration-200"
                       >
                         Prosseguir
                         <ArrowRight className="h-4 w-4" />
@@ -2039,55 +2409,122 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                 )}
 
                 {onboardingStep === 2 && (
-                  /* Step 2: Account type (Normal / Individual vs Empresa) */
+                  /* Step 2: Information inputs */
                   <div className="space-y-5 animate-fade-in">
-                    <div className="space-y-2">
-                      <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">Qual o seu modelo de operação?</h2>
-                      <p className="text-xs sm:text-sm text-stone-400">Diga-nos se você é um pesquisador autônomo ou se está representando uma organização empresarial.</p>
+                    <div className="space-y-1.5">
+                      <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight uppercase">
+                        {onboardType === "empresa" ? "Cadastro Corporativo" : "Cadastro de Operador"}
+                      </h2>
+                      <p className="text-xs sm:text-sm text-stone-400">
+                        {onboardType === "empresa" 
+                          ? "Insira as credenciais de sua organização empresarial para configurar o cockpit." 
+                          : "Preencha seus dados de identificação para habilitarmos seu workspace."}
+                      </p>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                      <button 
-                        onClick={() => setOnboardType("individual")}
-                        className={`flex flex-col items-start text-left p-4 sm:p-5 rounded-xl border transition-all duration-300 relative overflow-hidden group ${
-                          onboardType === "individual" 
-                            ? "bg-emerald-950/20 border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.1)]" 
-                            : "bg-[#18181b] border-[#2b2b30] hover:border-[#3f3f46]"
-                        }`}
-                      >
-                        <div className={`p-2 rounded-lg mb-2 sm:mb-4 ${onboardType === "individual" ? "bg-emerald-500/20 text-emerald-400" : "bg-stone-800 text-stone-400"}`}>
-                          <User className="h-5 w-5" />
-                        </div>
-                        <h3 className="text-sm font-bold text-white mb-1">Usuário Individual</h3>
-                        <p className="text-[11px] leading-relaxed text-stone-400">Estudante, entusiasta de cibersegurança ou profissional de segurança atuando de forma autônoma.</p>
-                      </button>
+                    <div className="space-y-4 pt-2">
+                      {onboardType === "empresa" ? (
+                        /* Company Fields */
+                        <>
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-stone-400">Nome da Empresa</label>
+                            <input 
+                              type="text" 
+                              placeholder="Ex: Hackerfy Solutions Ltda."
+                              value={onboardName}
+                              onChange={(e) => setOnboardName(e.target.value)}
+                              className="w-full bg-[#0c0c0e] border border-[#222226] hover:border-blue-500/30 focus:border-blue-500 rounded-xl px-4 py-3 text-sm text-white focus:outline-none transition-all duration-200"
+                            />
+                          </div>
 
-                      <button 
-                        onClick={() => setOnboardType("empresa")}
-                        className={`flex flex-col items-start text-left p-4 sm:p-5 rounded-xl border transition-all duration-300 relative overflow-hidden group ${
-                          onboardType === "empresa" 
-                            ? "bg-blue-950/20 border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.1)]" 
-                            : "bg-[#18181b] border-[#2b2b30] hover:border-[#3f3f46]"
-                        }`}
-                      >
-                        <div className={`p-2 rounded-lg mb-2 sm:mb-4 ${onboardType === "empresa" ? "bg-blue-500/20 text-blue-400" : "bg-stone-800 text-stone-400"}`}>
-                          <Crown className="h-5 w-5" />
-                        </div>
-                        <h3 className="text-sm font-bold text-white mb-1">Empresa / Organização</h3>
-                        <p className="text-[11px] leading-relaxed text-stone-400">Auditoria formal, equipes de SecOps/Red Team e gestão de relatórios de conformidade e riscos corporativos.</p>
-                      </button>
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-stone-400">CNPJ ou MEI</label>
+                            <input 
+                              type="text" 
+                              placeholder="Ex: 00.000.000/0001-00"
+                              value={onboardCompanyCnpj}
+                              onChange={(e) => setOnboardCompanyCnpj(e.target.value)}
+                              className="w-full bg-[#0c0c0e] border border-[#222226] hover:border-blue-500/30 focus:border-blue-500 rounded-xl px-4 py-3 text-sm text-white focus:outline-none transition-all duration-200"
+                            />
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-stone-400">Número da Empresa / Contato</label>
+                            <input 
+                              type="text" 
+                              placeholder="Ex: (11) 99999-9999"
+                              value={onboardCompanyPhone}
+                              onChange={(e) => setOnboardCompanyPhone(e.target.value)}
+                              className="w-full bg-[#0c0c0e] border border-[#222226] hover:border-blue-500/30 focus:border-blue-500 rounded-xl px-4 py-3 text-sm text-white focus:outline-none transition-all duration-200"
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        /* Individual Fields */
+                        <>
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-stone-400">Seu Nome (Como a IA irá lhe chamar)</label>
+                            <input 
+                              type="text" 
+                              placeholder="Ex: Marcos, Alan, Alice..."
+                              value={onboardName}
+                              onChange={(e) => setOnboardName(e.target.value)}
+                              className="w-full bg-[#0c0c0e] border border-[#222226] hover:border-emerald-500/30 focus:border-emerald-500 rounded-xl px-4 py-3 text-sm text-white focus:outline-none transition-all duration-200"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-bold uppercase tracking-wider text-stone-400">Qual a sua idade?</label>
+                              <input 
+                                type="number" 
+                                placeholder="Ex: 21"
+                                value={onboardAge}
+                                onChange={(e) => setOnboardAge(e.target.value)}
+                                className="w-full bg-[#0c0c0e] border border-[#222226] hover:border-emerald-500/30 focus:border-emerald-500 rounded-xl px-4 py-3 text-sm text-white focus:outline-none transition-all duration-200"
+                              />
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-bold uppercase tracking-wider text-stone-400">Data de Nascimento</label>
+                              <input 
+                                type="date" 
+                                value={onboardUserBirthdate}
+                                onChange={(e) => setOnboardUserBirthdate(e.target.value)}
+                                className="w-full bg-[#0c0c0e] border border-[#222226] hover:border-emerald-500/30 focus:border-emerald-500 rounded-xl px-4 py-3 text-sm text-white focus:outline-none transition-all duration-200 text-stone-300"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-stone-400">Número de Telefone / WhatsApp</label>
+                            <input 
+                              type="text" 
+                              placeholder="Ex: (11) 98888-8888"
+                              value={onboardUserPhone}
+                              onChange={(e) => setOnboardUserPhone(e.target.value)}
+                              className="w-full bg-[#0c0c0e] border border-[#222226] hover:border-emerald-500/30 focus:border-emerald-500 rounded-xl px-4 py-3 text-sm text-white focus:outline-none transition-all duration-200"
+                            />
+                          </div>
+                        </>
+                      )}
                     </div>
 
-                    <div className="pt-4 flex justify-between animate-fade-in">
+                    <div className="pt-4 flex justify-between items-center">
                       <button 
                         onClick={() => setOnboardingStep(1)}
-                        className="text-xs text-stone-400 hover:text-white font-semibold transition-all"
+                        className="text-xs font-bold text-stone-400 hover:text-white transition-all uppercase"
                       >
                         Voltar
                       </button>
                       <button 
                         onClick={() => setOnboardingStep(3)}
-                        className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm px-5 py-3 rounded-xl transition-all duration-200"
+                        disabled={
+                          onboardType === "empresa" 
+                            ? (!onboardName.trim() || !onboardCompanyCnpj.trim() || !onboardCompanyPhone.trim())
+                            : (!onboardName.trim() || !onboardAge.trim() || !onboardUserPhone.trim() || !onboardUserBirthdate.trim())
+                        }
+                        className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-30 disabled:pointer-events-none text-white font-extrabold text-sm px-6 py-3 rounded-xl transition-all duration-200"
                       >
                         Prosseguir
                         <ArrowRight className="h-4 w-4" />
@@ -2097,203 +2534,56 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                 )}
 
                 {onboardingStep === 3 && (
-                  /* Step 3: Treatment / How to call */
+                  /* Step 3: Summary and creation trigger */
                   <div className="space-y-5 animate-fade-in">
-                    <div className="space-y-2">
-                      <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">Como deseja ser chamado(a)?</h2>
-                      <p className="text-xs sm:text-sm text-stone-400">Escolha o codinome ou termo de tratamento para que o assistente Hackerfy se dirija a você durante as varreduras.</p>
+                    <div className="space-y-1.5 text-center sm:text-left">
+                      <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight uppercase">Provisionamento de Ambiente</h2>
+                      <p className="text-xs sm:text-sm text-stone-400">Verifique os metadados do manifesto abaixo antes de inicializar o seu terminal seguro.</p>
                     </div>
 
-                    <div className="space-y-4 pt-2">
+                    {/* YAML Summary Card */}
+                    <div className="bg-[#0c0c0e] border border-[#222226] rounded-2xl p-5 font-mono text-[11px] leading-relaxed text-stone-300 relative overflow-hidden shadow-inner">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none" />
+                      <div className="text-emerald-400 font-extrabold border-b border-[#222226] pb-2.5 mb-3.5 flex items-center justify-between">
+                        <span className="tracking-wider text-xs">HACKERFY_MANIFEST.YAML</span>
+                        <span className="text-[8px] bg-emerald-950 px-2 py-0.5 rounded text-emerald-400 uppercase font-mono tracking-widest font-black">Ready</span>
+                      </div>
+                      
                       <div className="space-y-1.5">
-                        <label className="text-xs font-semibold uppercase tracking-wider text-stone-400 font-mono">Forma de Tratamento</label>
-                        <input 
-                          type="text" 
-                          placeholder="Digite ou escolha uma das tags rápidas abaixo..."
-                          value={onboardHowToCall}
-                          onChange={(e) => setOnboardHowToCall(e.target.value)}
-                          className="w-full bg-[#18181b] border border-[#2b2b30] hover:border-emerald-500/30 focus:border-emerald-500 rounded-xl px-4 py-3 text-sm text-white focus:outline-none transition-all duration-200"
-                        />
-                      </div>
-
-                      {/* Quick recommendations */}
-                      <div className="space-y-2">
-                        <span className="text-[10px] uppercase font-mono tracking-widest text-stone-500 block">Sugestões de tratamento rápidas:</span>
-                        <div className="flex flex-wrap gap-2">
-                          {[
-                            onboardName,
-                            "Operador",
-                            "Ghost",
-                            "Root",
-                            "Analista",
-                            "Specter",
-                            "Comandante",
-                            onboardType === "empresa" ? "Auditor" : "Hacker"
-                          ].filter(Boolean).map((tag, idx) => (
-                            <button
-                              key={idx}
-                              onClick={() => setOnboardHowToCall(tag)}
-                              className={`text-xs px-3 py-1.5 rounded-lg border transition-all duration-150 ${
-                                onboardHowToCall === tag
-                                  ? "bg-emerald-500/10 border-emerald-500 text-emerald-400"
-                                  : "bg-[#18181b] border-[#222226] hover:border-[#333339] text-stone-300"
-                              }`}
-                            >
-                              {tag}
-                            </button>
-                          ))}
-                        </div>
+                        {onboardType === "empresa" ? (
+                          <>
+                            <div><span className="text-stone-500 font-bold">organization:</span> <span className="text-blue-400">"{onboardName}"</span></div>
+                            <div><span className="text-stone-500 font-bold">cnpj_mei:</span> <span className="text-blue-400">"{onboardCompanyCnpj}"</span></div>
+                            <div><span className="text-stone-500 font-bold">phone_contact:</span> <span className="text-stone-400">"{onboardCompanyPhone}"</span></div>
+                            <div><span className="text-stone-500 font-bold">environment:</span> <span className="text-purple-400">"enterprise_sandbox"</span></div>
+                          </>
+                        ) : (
+                          <>
+                            <div><span className="text-stone-500 font-bold">operator:</span> <span className="text-emerald-400">"{onboardName}"</span></div>
+                            <div><span className="text-stone-500 font-bold">operator_age:</span> <span className="text-emerald-400">{onboardAge}</span></div>
+                            <div><span className="text-stone-500 font-bold">birthdate:</span> <span className="text-emerald-400">"{onboardUserBirthdate}"</span></div>
+                            <div><span className="text-stone-500 font-bold">phone_number:</span> <span className="text-stone-400">"{onboardUserPhone}"</span></div>
+                            <div><span className="text-stone-500 font-bold">environment:</span> <span className="text-purple-400">"individual_sandbox"</span></div>
+                          </>
+                        )}
+                        <div><span className="text-stone-500 font-bold">encryption_mode:</span> <span className="text-yellow-500">"AES-256-GCM-Dedicated"</span></div>
+                        <div><span className="text-stone-500 font-bold">firewall_ingress:</span> <span className="text-yellow-500">"authorized_only"</span></div>
                       </div>
                     </div>
 
-                    <div className="pt-4 flex justify-between animate-fade-in">
+                    <div className="pt-4 flex justify-between items-center">
                       <button 
                         onClick={() => setOnboardingStep(2)}
-                        className="text-xs text-stone-400 hover:text-white font-semibold transition-all"
-                      >
-                        Voltar
-                      </button>
-                      <button 
-                        onClick={() => {
-                          if (onboardHowToCall.trim()) {
-                            setOnboardingStep(4);
-                          }
-                        }}
-                        disabled={!onboardHowToCall.trim()}
-                        className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-semibold text-sm px-5 py-3 rounded-xl transition-all duration-200"
-                      >
-                        Prosseguir
-                        <ArrowRight className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {onboardingStep === 4 && (
-                  /* Step 4: Goals Quiz */
-                  <div className="space-y-4 animate-fade-in">
-                    <div className="space-y-1">
-                      <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">Qual o seu principal objetivo?</h2>
-                      <p className="text-xs text-stone-400">Selecione um ou mais focos de atuação para que a IA ajuste a intensidade dos testes e auditorias recomendadas.</p>
-                    </div>
-
-                    <div className="space-y-2 pt-0.5">
-                      {[
-                        {
-                          title: "Aprender Cibersegurança de forma prática",
-                          desc: "Estudos acadêmicos, pentest ético básico e mitigação de vulnerabilidades comuns da OWASP.",
-                          emoji: "🎓"
-                        },
-                        {
-                          title: "Auditar códigos-fonte privados (SAST)",
-                          desc: "Varredura estática profunda em blocos de Node.js, Python, SQL para identificar brechas de injeção.",
-                          emoji: "💻"
-                        },
-                        {
-                          title: "Simular ataques e validar defesas (Red Teaming)",
-                          desc: "Inundação de requisições de teste de penetração, análise de brechas de RCE e simulações brutas.",
-                          emoji: "🚀"
-                        },
-                        {
-                          title: "Garantir conformidade e relatórios",
-                          desc: "Foco em conformidades corporativas, logs organizados, análise executiva e correções formais.",
-                          emoji: "🛡️"
-                        }
-                      ].map((item, idx) => {
-                        const isSelected = onboardGoals.includes(item.title);
-                        return (
-                          <button
-                            key={idx}
-                            onClick={() => {
-                              if (isSelected) {
-                                setOnboardGoals(onboardGoals.filter(g => g !== item.title));
-                              } else {
-                                setOnboardGoals([...onboardGoals, item.title]);
-                              }
-                            }}
-                            className={`w-full text-left p-3 rounded-xl border flex items-center justify-between gap-3 transition-all duration-200 ${
-                              isSelected
-                                ? "bg-emerald-950/20 border-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.08)]"
-                                : "bg-[#18181b] border-[#2b2b30] hover:border-[#3a3a40]"
-                            }`}
-                          >
-                            <div className="flex items-start gap-3">
-                              <div className="text-lg shrink-0 mt-0.5">{item.emoji}</div>
-                              <div className="space-y-0.5">
-                                <h4 className="text-xs font-bold text-white">{item.title}</h4>
-                                <p className="text-[10px] leading-relaxed text-stone-400">{item.desc}</p>
-                              </div>
-                            </div>
-                            <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-all ${
-                              isSelected
-                                ? "bg-emerald-600 border-emerald-500 text-white"
-                                : "border-[#3a3a40] text-transparent"
-                            }`}>
-                              <Check className="h-3 w-3 stroke-[3]" />
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    <div className="pt-3 flex justify-between animate-fade-in">
-                      <button 
-                        onClick={() => setOnboardingStep(3)}
-                        className="text-xs text-stone-400 hover:text-white font-semibold transition-all"
-                      >
-                        Voltar
-                      </button>
-                      <button 
-                        onClick={() => {
-                          if (onboardGoals.length > 0) {
-                            setOnboardingStep(5);
-                          }
-                        }}
-                        disabled={onboardGoals.length === 0}
-                        className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-semibold text-sm px-5 py-3 rounded-xl transition-all duration-200"
-                      >
-                        Prosseguir
-                        <ArrowRight className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {onboardingStep === 5 && (
-                  /* Step 5: Summary & Create Platform ("Criar Plataforma") */
-                  <div className="space-y-5 animate-fade-in">
-                    <div className="space-y-2">
-                      <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">Criação da sua plataforma!</h2>
-                      <p className="text-xs sm:text-sm text-stone-400">Verifique os metadados do manifesto antes de iniciar o provisionamento do seu workspace seguro.</p>
-                    </div>
-
-                    {/* YAML-like summary */}
-                    <div className="bg-black/40 border border-[#222226] rounded-xl p-4 font-mono text-[11px] leading-relaxed text-stone-300">
-                      <div className="text-emerald-500 font-bold border-b border-[#222226] pb-1.5 mb-2 flex items-center justify-between">
-                        <span>HACKERFY_MANIFEST.YAML</span>
-                        <span className="text-[8px] bg-emerald-950 px-1.5 py-0.5 rounded text-emerald-400 uppercase font-mono">Pronto</span>
-                      </div>
-                      <div><span className="text-stone-500">operator:</span> <span className="text-emerald-400">"{onboardName}"</span></div>
-                      <div><span className="text-stone-500">age:</span> <span className="text-emerald-400">{onboardAge}</span></div>
-                      <div><span className="text-stone-500">environment:</span> <span className="text-blue-400">"{onboardType}"</span></div>
-                      <div><span className="text-stone-500">address_as:</span> <span className="text-yellow-400">"{onboardHowToCall}"</span></div>
-                      <div><span className="text-stone-500">target_objective:</span> <span className="text-purple-400">"{onboardGoals.join(', ')}"</span></div>
-                      <div><span className="text-stone-500">sandbox_encryption:</span> <span className="text-stone-400">AES-256-GCM (Dedicated)</span></div>
-                    </div>
-
-                    <div className="pt-4 flex justify-between items-center animate-fade-in">
-                      <button 
-                        onClick={() => setOnboardingStep(4)}
-                        className="text-xs text-stone-400 hover:text-white font-semibold transition-all"
+                        className="text-xs font-bold text-stone-400 hover:text-white transition-all uppercase"
                       >
                         Voltar
                       </button>
                       <button 
                         onClick={handleCreatePlatform}
-                        className="flex items-center gap-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-extrabold text-sm px-6 py-3.5 rounded-xl transition-all duration-300 shadow-[0_0_20px_rgba(16,185,129,0.25)] hover:shadow-[0_0_25px_rgba(16,185,129,0.4)]"
+                        className="flex items-center gap-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-black text-xs uppercase tracking-wider px-6 py-3.5 rounded-xl transition-all duration-300 shadow-[0_0_20px_rgba(16,185,129,0.2)] hover:shadow-[0_0_25px_rgba(16,185,129,0.35)]"
                       >
-                        <Sparkles className="h-4.5 w-4.5 animate-spin-slow text-yellow-300 shrink-0" />
-                        CRIAR PLATAFORMA
+                        <Sparkles className="h-4 w-4 text-yellow-300 shrink-0" />
+                        Criar Plataforma
                       </button>
                     </div>
                   </div>
@@ -2409,6 +2699,22 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
               </svg>
               {isSidebarExpanded && <span>Hackerfy Omni Intel</span>}
             </button>
+
+            {/* Admin Dashboard Button */}
+            {currentUser?.email === "aigerakabane81983521523@gmail.com" && (
+              <button
+                onClick={() => handleTabChange("admin")}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold border transition ${
+                  activeTab === "admin"
+                    ? "bg-purple-950/20 border-purple-500/40 text-purple-400"
+                    : "text-purple-400 hover:text-purple-300 hover:bg-[#1a0f26]/40 border-transparent hover:border-purple-500/10"
+                } ${isSidebarExpanded ? "justify-start" : "justify-center"}`}
+                title="Painel de Administração"
+              >
+                <Shield className="h-4.5 w-4.5 text-purple-400 animate-pulse shrink-0" />
+                {isSidebarExpanded && <span className="font-extrabold tracking-wide">Painel Admin 🔐</span>}
+              </button>
+            )}
 
             {/* Search Chats Actions */}
             {isSidebarExpanded && (
@@ -2652,10 +2958,10 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                         <ColorOrb dimension="34px" className="shrink-0 rounded-xl" tones={getOrbTones(currentPersonality)} personality={currentPersonality} />
                       )}
                       
-                      <div className={`max-w-[85%] rounded-xl p-3.5 text-xs ${
+                      <div className={`max-w-[92%] sm:max-w-[85%] rounded-xl p-3.5 text-xs ${
                         m.role === "user" 
-                          ? "bg-[#2563eb] text-white" 
-                          : "bg-[#18181a] text-stone-200 border border-[#232326]/60"
+                          ? "bg-[#2563eb]/75 backdrop-blur-md text-white shadow-md shadow-blue-500/10" 
+                          : "bg-[#18181a]/65 backdrop-blur-md text-stone-200 border border-[#232326]/40 shadow-sm"
                       }`}>
                         <div className="font-extrabold text-[9px] uppercase tracking-wider mb-1 opacity-70">
                           {m.role === "user" ? (
@@ -2865,7 +3171,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                 )}
 
                 {/* Sticky input container mimicking Gemini's docked input perfectly */}
-                <div className="shrink-0 w-full bg-gradient-to-t from-[#0b0d10] via-[#0b0d10] to-[#0b0d10]/0 pt-2 pb-0 sm:pb-3 px-0 sm:px-4 z-30">
+                <div className="shrink-0 w-full bg-[#0b0d10] sm:bg-gradient-to-t sm:from-[#0b0d10] sm:via-[#0b0d10] sm:to-[#0b0d10]/0 pt-1 sm:pt-2 pb-0 sm:pb-3 px-0 sm:px-4 z-30">
                   <div className="relative w-full">
                     {/* The plus button dropdown popover */}
                     {showPlusDropdown && (
@@ -3056,7 +3362,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                     )}
 
                     {/* Pill layout matching Gemini Input Box precisely */}
-                    <div className="w-full flex items-center bg-[#1e1f20] hover:bg-[#2a2b2d] focus-within:bg-[#1e1f20] border-t border-b sm:border border-[#2d2f31] focus-within:border-[#4285f4] border-x-0 sm:border-x rounded-none sm:rounded-full px-3 py-1.5 sm:px-4 sm:py-2 shadow-md transition-all">
+                    <div className="w-full flex items-center bg-[#1e1f20]/75 backdrop-blur-md hover:bg-[#2a2b2d]/85 focus-within:bg-[#1e1f20]/90 border-t border-b sm:border border-[#2d2f31]/55 focus-within:border-[#4285f4] border-x-0 sm:border-x rounded-none sm:rounded-full px-3 py-1.5 sm:px-4 sm:py-2 shadow-md transition-all">
                       {/* Plus Button */}
                       <button
                         type="button"
@@ -4104,48 +4410,99 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
+                      if (localFileObjectUrl) {
+                        URL.revokeObjectURL(localFileObjectUrl);
+                        setLocalFileObjectUrl("");
+                      }
+                      try {
+                        await deleteWallpaperFile();
+                      } catch (e) {}
                       setWallpaperUrl("https://assets.mixkit.co/videos/preview/mixkit-binary-code-numbers-scrolling-by-32408-large.mp4");
                       setWallpaperType("video");
                     }}
-                    className="p-2.5 bg-emerald-950/20 border border-emerald-500/15 hover:border-emerald-500/40 rounded-xl text-left transition text-[10px] text-stone-300 font-mono flex flex-col gap-1"
+                    className="p-2.5 bg-emerald-950/20 border border-emerald-500/15 hover:border-emerald-500/40 rounded-xl text-left transition text-[10px] text-stone-300 font-mono flex flex-col gap-1 cursor-pointer"
                   >
                     <span className="font-bold text-emerald-400">01. Código Binário (Vídeo)</span>
                     <span className="text-[8px] text-stone-500">Fluxo contínuo de números verdes</span>
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
+                      if (localFileObjectUrl) {
+                        URL.revokeObjectURL(localFileObjectUrl);
+                        setLocalFileObjectUrl("");
+                      }
+                      try {
+                        await deleteWallpaperFile();
+                      } catch (e) {}
                       setWallpaperUrl("https://assets.mixkit.co/videos/preview/mixkit-futuristic-tunnel-with-glowing-neon-lights-32986-large.mp4");
                       setWallpaperType("video");
                     }}
-                    className="p-2.5 bg-blue-950/20 border border-blue-500/15 hover:border-blue-500/40 rounded-xl text-left transition text-[10px] text-stone-300 font-mono flex flex-col gap-1"
+                    className="p-2.5 bg-blue-950/20 border border-blue-500/15 hover:border-blue-500/40 rounded-xl text-left transition text-[10px] text-stone-300 font-mono flex flex-col gap-1 cursor-pointer"
                   >
                     <span className="font-bold text-blue-400">02. Túnel de Neon (Vídeo)</span>
                     <span className="text-[8px] text-stone-500">Túnel futurista em movimento</span>
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
+                      if (localFileObjectUrl) {
+                        URL.revokeObjectURL(localFileObjectUrl);
+                        setLocalFileObjectUrl("");
+                      }
+                      try {
+                        await deleteWallpaperFile();
+                      } catch (e) {}
                       setWallpaperUrl("https://images.unsplash.com/photo-1510511459019-5dda7724fd87?auto=format&fit=crop&q=80&w=1200");
                       setWallpaperType("image");
                     }}
-                    className="p-2.5 bg-stone-900/40 border border-stone-800 hover:border-stone-600 rounded-xl text-left transition text-[10px] text-stone-300 font-mono flex flex-col gap-1"
+                    className="p-2.5 bg-stone-900/40 border border-stone-800 hover:border-stone-600 rounded-xl text-left transition text-[10px] text-stone-300 font-mono flex flex-col gap-1 cursor-pointer"
                   >
                     <span className="font-bold text-stone-200">03. Matrix Grid (Imagem)</span>
                     <span className="text-[8px] text-stone-500">Placa lógica em alta definição</span>
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
+                      if (localFileObjectUrl) {
+                        URL.revokeObjectURL(localFileObjectUrl);
+                        setLocalFileObjectUrl("");
+                      }
+                      try {
+                        await deleteWallpaperFile();
+                      } catch (e) {}
                       setWallpaperUrl("https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&q=80&w=1200");
                       setWallpaperType("image");
                     }}
-                    className="p-2.5 bg-stone-900/40 border border-stone-800 hover:border-stone-600 rounded-xl text-left transition text-[10px] text-stone-300 font-mono flex flex-col gap-1"
+                    className="p-2.5 bg-stone-900/40 border border-stone-800 hover:border-stone-600 rounded-xl text-left transition text-[10px] text-stone-300 font-mono flex flex-col gap-1 cursor-pointer"
                   >
                     <span className="font-bold text-emerald-500">04. Terminal Green (Imagem)</span>
                     <span className="text-[8px] text-stone-500">Dados criptografados estilo hacker</span>
                   </button>
+                </div>
+              </div>
+
+              {/* Upload from device/gallery */}
+              <div className="space-y-2 border-t border-stone-800/50 pt-3">
+                <span className="block text-[10px] uppercase font-mono tracking-wider text-stone-400 font-bold">Carregar do Dispositivo (Galeria)</span>
+                
+                <div className="relative group flex flex-col items-center justify-center border border-dashed border-stone-800 hover:border-emerald-500/40 bg-stone-950/40 rounded-2xl p-4 text-center cursor-pointer transition">
+                  <input
+                    type="file"
+                    accept="image/*,video/*"
+                    onChange={handleFileUpload}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                  />
+                  <div className="p-2 bg-emerald-500/5 rounded-xl text-emerald-400 group-hover:scale-105 transition mb-2">
+                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="17 8 12 3 7 8" />
+                      <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                  </div>
+                  <span className="text-[11px] font-bold text-stone-300">Escolha uma Imagem ou Vídeo da Galeria</span>
+                  <span className="text-[9px] text-stone-500 mt-0.5">Suporta imagens e vídeos em alta definição</span>
                 </div>
               </div>
 
@@ -4157,8 +4514,14 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                   <input
                     type="text"
                     className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3.5 py-2 text-xs text-stone-200 focus:outline-none focus:border-emerald-500/40 placeholder-stone-600"
-                    value={wallpaperUrl}
-                    onChange={(e) => setWallpaperUrl(e.target.value)}
+                    value={wallpaperUrl && wallpaperUrl.startsWith("blob:") ? "" : wallpaperUrl}
+                    onChange={(e) => {
+                      if (localFileObjectUrl) {
+                        URL.revokeObjectURL(localFileObjectUrl);
+                        setLocalFileObjectUrl("");
+                      }
+                      setWallpaperUrl(e.target.value);
+                    }}
                     placeholder="https://exemplo.com/fundo-cyber.mp4 ou .jpg"
                   />
                 </div>
@@ -4191,9 +4554,16 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
             <div className="flex justify-between items-center border-t border-stone-800/60 pt-4 font-sans">
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   localStorage.removeItem("hackerfy_wallpaper");
                   localStorage.removeItem("hackerfy_wallpaper_type");
+                  try {
+                    await deleteWallpaperFile();
+                  } catch (e) {}
+                  if (localFileObjectUrl) {
+                    URL.revokeObjectURL(localFileObjectUrl);
+                    setLocalFileObjectUrl("");
+                  }
                   setWallpaperUrl("");
                   showToast("Fundo padrão redefinido com sucesso!", "success");
                   setShowWallpaperModal(false);
@@ -4209,7 +4579,7 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                 <button
                   type="button"
                   onClick={() => setShowWallpaperModal(false)}
-                  className="px-4 py-2 rounded-xl bg-stone-900 text-stone-400 hover:text-white transition font-bold text-xs"
+                  className="px-4 py-2 rounded-xl bg-stone-900 text-stone-400 hover:text-white transition font-bold text-xs cursor-pointer"
                 >
                   Cancelar
                 </button>
@@ -4217,13 +4587,18 @@ Eu já configurei todas as nossas diretrizes de sandbox e alinhamento de modelo 
                   type="button"
                   onClick={() => {
                     if (wallpaperUrl) {
-                      localStorage.setItem("hackerfy_wallpaper", wallpaperUrl);
+                      // Only store standard URL in localstorage if it is not a blob URL
+                      if (wallpaperUrl.startsWith("blob:")) {
+                        localStorage.setItem("hackerfy_wallpaper", "indexeddb");
+                      } else {
+                        localStorage.setItem("hackerfy_wallpaper", wallpaperUrl);
+                      }
                       localStorage.setItem("hackerfy_wallpaper_type", wallpaperType);
                       showToast("Wallpaper personalizado salvo com sucesso!", "success");
                     }
                     setShowWallpaperModal(false);
                   }}
-                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition"
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition cursor-pointer"
                 >
                   Salvar Fundo
                 </button>
