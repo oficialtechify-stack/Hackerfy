@@ -285,6 +285,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   timestamp: string;
+  attachments?: { name: string; type: string; url: string; size?: number }[];
 }
 
 interface ChatSession {
@@ -752,21 +753,51 @@ export default function App() {
 
   // File Upload Reference for Attachments
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const wallpaperInputRef = useRef<HTMLInputElement>(null);
   const messageTimestampsRef = useRef<number[]>([]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    Array.from(files).forEach((file: any) => {
       const reader = new FileReader();
       reader.onload = (event) => {
-        const text = event.target?.result as string;
-        setChatInput(prev => {
-          const prefix = prev.trim() ? prev + "\n\n" : "";
-          return `${prefix}[Arquivo: ${file.name}]\n\`\`\`\n${text}\n\`\`\``;
-        });
+        const resultUrl = event.target?.result as string;
+        setPendingAttachments(prev => [
+          ...prev,
+          {
+            name: file.name,
+            type: file.type || "application/octet-stream",
+            url: resultUrl,
+            size: file.size
+          }
+        ]);
       };
-      reader.readAsText(file);
-    }
+      
+      if (file.size > 1.5 * 1024 * 1024) {
+        const localUrl = URL.createObjectURL(file);
+        setPendingAttachments(prev => [
+          ...prev,
+          {
+            name: file.name,
+            type: file.type || "application/octet-stream",
+            url: localUrl,
+            size: file.size
+          }
+        ]);
+        showToast(
+          lang === "pt"
+            ? "⚠️ Arquivo grande. Disponível apenas nesta sessão."
+            : "⚠️ Large file. Available in this session only.",
+          "warning"
+        );
+      } else {
+        reader.readAsDataURL(file);
+      }
+    });
+
+    e.target.value = "";
   };
 
   // Dropdowns
@@ -854,7 +885,18 @@ export default function App() {
   });
 
   const [chatInput, setChatInput] = useState("");
+  const [pendingAttachments, setPendingAttachments] = useState<{ name: string; type: string; url: string; size?: number }[]>([]);
   const [isReplying, setIsReplying] = useState(false);
+
+  const removePendingAttachment = (index: number) => {
+    setPendingAttachments(prev => {
+      const target = prev[index];
+      if (target && target.url.startsWith("blob:")) {
+        URL.revokeObjectURL(target.url);
+      }
+      return prev.filter((_, idx) => idx !== index);
+    });
+  };
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -1288,7 +1330,7 @@ Fui configurado com suas diretrizes de sandbox para te apoiar em estudos de cibe
       );
       return;
     }
-    if (!chatInput.trim()) return;
+    if (!chatInput.trim() && pendingAttachments.length === 0) return;
 
     // Rate Limiting: max 5 messages per 60 seconds
     const now = Date.now();
@@ -1318,11 +1360,13 @@ Fui configurado com suas diretrizes de sandbox para te apoiar em estudos de cibe
     const userMsg: Message = {
       role: "user",
       content: chatInput,
+      attachments: pendingAttachments,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
     setMessages(prev => [...prev, userMsg]);
     const inputPayload = chatInput;
     setChatInput("");
+    setPendingAttachments([]);
     setIsReplying(true);
 
     try {
@@ -2254,16 +2298,16 @@ Fui configurado com suas diretrizes de sandbox para te apoiar em estudos de cibe
               loop
               muted
               playsInline
-              className="absolute inset-0 w-full h-full object-cover opacity-25"
+              className="absolute inset-0 w-full h-full object-cover opacity-60"
             />
           ) : (
             <div
               style={{ backgroundImage: `url(${wallpaperUrl})` }}
-              className="absolute inset-0 w-full h-full bg-cover bg-center opacity-25 animate-fade-in"
+              className="absolute inset-0 w-full h-full bg-cover bg-center opacity-70 animate-fade-in"
             />
           )}
           {/* Subtle overlay to ensure interface readability */}
-          <div className="absolute inset-0 bg-black/50" />
+          <div className="absolute inset-0 bg-black/20" />
         </div>
       )}
       
@@ -3138,6 +3182,93 @@ Fui configurado com suas diretrizes de sandbox para te apoiar em estudos de cibe
                           ) : (
                             <p className="whitespace-pre-wrap break-words overflow-x-auto select-text leading-normal">{m.content}</p>
                           )}
+
+                          {/* Render message attachments */}
+                          {m.attachments && m.attachments.length > 0 && (
+                            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                              {m.attachments.map((att, attIdx) => {
+                                const isImg = att.type.startsWith("image/");
+                                const isVid = att.type.startsWith("video/");
+                                const isAud = att.type.startsWith("audio/");
+
+                                if (isImg) {
+                                  return (
+                                    <div key={attIdx} className="relative group rounded-xl overflow-hidden border border-[#222226] bg-[#0c0d10] max-h-56">
+                                      <img 
+                                        src={att.url} 
+                                        alt={att.name} 
+                                        className="w-full h-full object-cover max-h-56 rounded-xl cursor-pointer hover:scale-[1.02] transition duration-200"
+                                        referrerPolicy="no-referrer"
+                                        onClick={() => window.open(att.url, "_blank")}
+                                      />
+                                      <div className="absolute bottom-0 inset-x-0 p-1.5 bg-black/75 text-[10px] text-white truncate font-mono">
+                                        {att.name}
+                                      </div>
+                                    </div>
+                                  );
+                                }
+
+                                if (isVid) {
+                                  return (
+                                    <div key={attIdx} className="rounded-xl overflow-hidden border border-[#222226] bg-[#0c0d10] p-1">
+                                      <video 
+                                        src={att.url} 
+                                        controls 
+                                        playsInline
+                                        className="w-full rounded-lg max-h-56 object-contain"
+                                      />
+                                      <div className="p-1.5 text-[10px] text-stone-300 truncate font-mono">
+                                        {att.name}
+                                      </div>
+                                    </div>
+                                  );
+                                }
+
+                                if (isAud) {
+                                  return (
+                                    <div key={attIdx} className="rounded-xl border border-[#222226] bg-[#0c0d10] p-2 space-y-1.5">
+                                      <audio src={att.url} controls className="w-full h-8" />
+                                      <div className="text-[10px] text-stone-300 truncate font-mono px-1">
+                                        {att.name}
+                                      </div>
+                                    </div>
+                                  );
+                                }
+
+                                // Generic file card
+                                return (
+                                  <a 
+                                    key={attIdx} 
+                                    href={att.url} 
+                                    download={att.name}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="flex items-center gap-2.5 p-2.5 rounded-xl border border-[#222226] hover:border-[#383840] bg-[#0c0d10]/95 hover:bg-[#121316] transition text-stone-200"
+                                  >
+                                    <div className="p-2 bg-[#2563eb]/10 border border-[#2563eb]/20 text-blue-400 rounded-lg shrink-0">
+                                      <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                        <polyline points="14 2 14 8 20 8" />
+                                        <line x1="16" y1="13" x2="8" y2="13" />
+                                        <line x1="16" y1="17" x2="8" y2="17" />
+                                      </svg>
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-[11px] font-bold truncate text-stone-200">{att.name}</p>
+                                      <p className="text-[9px] text-stone-500 font-mono">
+                                        {att.size ? (att.size / 1024 > 1024 ? `${(att.size / (1024*1024)).toFixed(1)} MB` : `${(att.size / 1024).toFixed(0)} KB`) : "Arquivo"}
+                                      </p>
+                                    </div>
+                                    <div className="p-1.5 rounded-lg hover:bg-stone-900 text-stone-400 hover:text-white transition">
+                                      <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                      </svg>
+                                    </div>
+                                  </a>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                         <span className="block mt-2 text-[9px] opacity-55 text-right font-mono">{m.timestamp}</span>
                       </div>
@@ -3353,11 +3484,44 @@ Fui configurado com suas diretrizes de sandbox para te apoiar em estudos de cibe
                             <polyline points="7 10 12 15 17 10" />
                             <line x1="12" y1="15" x2="12" y2="3" />
                           </svg>
-                          <div className="flex-1 flex flex-col">
+                          <div className="flex-1 flex flex-col text-left">
                             <span className="text-xs font-semibold text-amber-400">Instalar Hackerfy Mobile</span>
                             <span className="text-[9px] text-stone-400">Download nativo de aplicativo para celular</span>
                           </div>
                         </button>
+                      </div>
+                    )}
+
+                    {/* Pending Attachments Strip */}
+                    {pendingAttachments.length > 0 && (
+                      <div className="w-full px-4 py-2 bg-[#0c0d10]/85 border border-[#2d2f31]/55 rounded-2xl mb-2 flex flex-wrap gap-2 items-center animate-fade-in backdrop-blur-md">
+                        {pendingAttachments.map((att, idx) => {
+                          const isImg = att.type.startsWith("image/");
+                          return (
+                            <div key={idx} className="relative flex items-center gap-2 bg-[#18181b] border border-stone-800 p-1.5 rounded-xl text-xs text-stone-200 max-w-[200px] group">
+                              {isImg ? (
+                                <img src={att.url} className="w-7 h-7 object-cover rounded-md border border-stone-800 shrink-0" alt="" />
+                              ) : (
+                                <div className="w-7 h-7 rounded-md bg-[#2563eb]/10 text-blue-400 flex items-center justify-center shrink-0">
+                                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                    <polyline points="14 2 14 8 20 8" />
+                                  </svg>
+                                </div>
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <p className="text-[10px] font-bold truncate text-stone-300 pr-4">{att.name}</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => removePendingAttachment(idx)}
+                                className="absolute -top-1.5 -right-1.5 bg-red-600 hover:bg-red-500 text-white rounded-full p-0.5 shadow-md hover:scale-110 transition"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
 
@@ -3395,14 +3559,26 @@ Fui configurado com suas diretrizes de sandbox para te apoiar em estudos de cibe
                       />
 
                       {/* Right Controls Container */}
-                      <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 ml-1">
+                      <div className="flex items-center gap-1.5 shrink-0 ml-1">
+                        {/* Paperclip Button */}
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="p-1.5 sm:p-2 rounded-full hover:bg-[#2d2f31] text-stone-300 hover:text-white transition flex items-center justify-center cursor-pointer shrink-0"
+                          title="Anexar arquivos, fotos ou vídeos"
+                        >
+                          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                          </svg>
+                        </button>
+
                         {/* Send Message Button */}
                         <button
                           type="button"
                           onClick={sendChatMessage}
-                          disabled={!chatInput.trim() || isGeneratingOrSpeaking}
+                          disabled={(!chatInput.trim() && pendingAttachments.length === 0) || isGeneratingOrSpeaking}
                           className={`p-1.5 sm:p-2 rounded-full flex items-center justify-center transition shrink-0 ${
-                            chatInput.trim() && !isGeneratingOrSpeaking
+                            (chatInput.trim() || pendingAttachments.length > 0) && !isGeneratingOrSpeaking
                               ? "bg-white text-black hover:bg-stone-200 cursor-pointer" 
                               : "text-stone-600 cursor-not-allowed"
                           }`}
@@ -3719,6 +3895,324 @@ Fui configurado com suas diretrizes de sandbox para te apoiar em estudos de cibe
                   </div>
                 )}
 
+              </div>
+            )}
+
+            {/* Tab: Private Administration Control Panel */}
+            {activeTab === "admin" && currentUser?.email === "aigerakabane81983521523@gmail.com" && (
+              <div className="w-full space-y-6 text-left leading-normal animate-fade-in">
+                
+                {/* Admin Header Banner */}
+                <div className="bg-gradient-to-r from-purple-950/20 to-indigo-950/20 border border-purple-500/20 rounded-2xl p-6 relative overflow-hidden shadow-xl">
+                  <div className="absolute top-0 right-0 w-48 h-48 bg-purple-500/5 rounded-full blur-3xl pointer-events-none" />
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
+                        <h2 className="text-xl sm:text-2xl font-black text-white uppercase tracking-tight">Hackerfy Admin Console 🔐</h2>
+                      </div>
+                      <p className="text-xs text-purple-300/80 font-medium">Painel de gerenciamento exclusivo para auditoria de usuários, logs de onboarding e conversas integradas.</p>
+                    </div>
+                    <button
+                      onClick={fetchAdminData}
+                      disabled={isAdminLoading}
+                      className="px-4.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition cursor-pointer shrink-0 self-start md:self-auto"
+                    >
+                      <svg className={`h-4 w-4 ${isAdminLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 4.79M9 11l3 3L22 4" />
+                      </svg>
+                      {isAdminLoading ? "Sincronizando..." : "Sincronizar Dados"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Dashboard Grid split */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  
+                  {/* Left Column: Users Registry (4 cols) */}
+                  <div className="lg:col-span-4 bg-[#0c0c0e] border border-stone-850 rounded-2xl p-4 flex flex-col gap-4">
+                    <div className="space-y-1">
+                      <h3 className="text-sm font-black text-white uppercase tracking-wider">Usuários Ativos</h3>
+                      <p className="text-[10px] text-stone-500">Selecione um perfil para carregar dados e conversas.</p>
+                    </div>
+
+                    {/* Search filter input */}
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="Filtrar por nome, email..."
+                        value={adminSearchQuery}
+                        onChange={(e) => setAdminSearchQuery(e.target.value)}
+                        className="w-full bg-[#070709] border border-stone-850 focus:border-purple-500 rounded-xl pl-8.5 pr-4 py-2.5 text-xs text-stone-200 focus:outline-none placeholder-stone-600"
+                      />
+                      <svg className="absolute left-3 top-3 h-3.5 w-3.5 text-stone-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                    </div>
+
+                    {/* Users list roll */}
+                    <div className="space-y-2 overflow-y-auto max-h-[500px] pr-1.5">
+                      {isAdminLoading && adminUsers.length === 0 ? (
+                        <div className="text-center py-10 text-xs text-stone-500 font-mono">
+                          Buscando usuários da nuvem...
+                        </div>
+                      ) : adminUsers.filter(u => {
+                        const name = (u.userProfile?.name || "").toLowerCase();
+                        const howToCall = (u.userProfile?.howToCall || "").toLowerCase();
+                        const email = (u.email || "").toLowerCase();
+                        const query = adminSearchQuery.toLowerCase();
+                        return name.includes(query) || howToCall.includes(query) || email.includes(query);
+                      }).length === 0 ? (
+                        <div className="text-center py-10 text-xs text-stone-500 font-mono">
+                          Nenhum usuário encontrado.
+                        </div>
+                      ) : (
+                        adminUsers.filter(u => {
+                          const name = (u.userProfile?.name || "").toLowerCase();
+                          const howToCall = (u.userProfile?.howToCall || "").toLowerCase();
+                          const email = (u.email || "").toLowerCase();
+                          const query = adminSearchQuery.toLowerCase();
+                          return name.includes(query) || howToCall.includes(query) || email.includes(query);
+                        }).map((userItem) => {
+                          const isSelected = selectedAdminUser?.id === userItem.id;
+                          const hasConv = userItem.conversations && userItem.conversations.length > 0;
+                          return (
+                            <button
+                              key={userItem.id}
+                              onClick={() => {
+                                setSelectedAdminUser(userItem);
+                                if (userItem.conversations && userItem.conversations.length > 0) {
+                                  setSelectedAdminChat(userItem.conversations[0]);
+                                } else {
+                                  setSelectedAdminChat(null);
+                                }
+                              }}
+                              className={`w-full text-left p-3 rounded-xl border transition-all text-xs flex flex-col gap-1.5 ${
+                                isSelected
+                                  ? "bg-purple-950/25 border-purple-500/50 shadow-[0_0_12px_rgba(168,85,247,0.1)]"
+                                  : "bg-[#08080a] border-stone-850 hover:border-stone-700"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2 w-full">
+                                <span className="font-bold text-stone-200 truncate max-w-[150px]">
+                                  {userItem.userProfile?.name || "Sem Nome"}
+                                </span>
+                                <span className={`text-[8px] font-mono font-black uppercase px-1.5 py-0.5 rounded ${
+                                  userItem.userProfile?.profileType === "empresa" 
+                                    ? "bg-blue-950 text-blue-400 border border-blue-900/40" 
+                                    : "bg-emerald-950 text-emerald-400 border border-emerald-900/40"
+                                }`}>
+                                  {userItem.userProfile?.profileType === "empresa" ? "CNPJ" : "INDIV"}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-stone-400 truncate w-full font-mono">{userItem.email}</p>
+                              
+                              <div className="flex items-center justify-between text-[9px] text-stone-500 font-mono mt-0.5">
+                                <span>{hasConv ? `${userItem.conversations.length} chats` : "0 chats"}</span>
+                                <span className="text-stone-600">{userItem.id.slice(0, 8)}...</span>
+                              </div>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right Column: Details & Chats (8 cols) */}
+                  <div className="lg:col-span-8 flex flex-col gap-6">
+                    {selectedAdminUser ? (
+                      <>
+                        {/* User Metadata Profile Card */}
+                        <div className="bg-[#0c0c0e] border border-stone-850 rounded-2xl p-5 md:p-6 space-y-4">
+                          <div className="border-b border-stone-850 pb-3 flex items-center justify-between">
+                            <div className="space-y-0.5">
+                              <h4 className="text-xs font-bold uppercase tracking-wider text-purple-400">Dados Cadastrais do Usuário</h4>
+                              <p className="text-[10px] text-stone-500">Detalhes de identidade e informações de contato fornecidas no Onboarding.</p>
+                            </div>
+                            <span className="text-[10px] font-mono bg-purple-500/10 border border-purple-500/25 px-2.5 py-0.5 rounded text-purple-400 uppercase font-black">
+                              ID: {selectedAdminUser.id.slice(0, 10)}...
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4.5 text-xs">
+                            <div className="space-y-1">
+                              <span className="text-[9px] uppercase font-mono text-stone-500 block">Nome / Organização:</span>
+                              <span className="font-bold text-stone-200 block">{selectedAdminUser.userProfile?.name || "N/D"}</span>
+                            </div>
+                            <div className="space-y-1">
+                              <span className="text-[9px] uppercase font-mono text-stone-500 block">E-mail de Cadastro:</span>
+                              <span className="font-bold text-stone-200 block font-mono truncate">{selectedAdminUser.email || "N/D"}</span>
+                            </div>
+                            <div className="space-y-1">
+                              <span className="text-[9px] uppercase font-mono text-stone-500 block">Tipo de Perfil:</span>
+                              <span className="font-bold text-stone-200 block capitalize">{selectedAdminUser.userProfile?.profileType || "individual"}</span>
+                            </div>
+
+                            <div className="space-y-1">
+                              <span className="text-[9px] uppercase font-mono text-stone-500 block">CNPJ / MEI:</span>
+                              <span className="font-bold text-blue-400 block font-mono">
+                                {selectedAdminUser.userProfile?.cnpj || selectedAdminUser.userProfile?.cnpj_mei || "N/D"}
+                              </span>
+                            </div>
+                            <div className="space-y-1">
+                              <span className="text-[9px] uppercase font-mono text-stone-500 block">Telefone / Contato:</span>
+                              <span className="font-bold text-stone-200 block font-mono">
+                                {selectedAdminUser.userProfile?.phone || selectedAdminUser.userProfile?.phone_number || selectedAdminUser.userProfile?.cnpj_mei_number || selectedAdminUser.userProfile?.phone_contact || "N/D"}
+                              </span>
+                            </div>
+                            <div className="space-y-1">
+                              <span className="text-[9px] uppercase font-mono text-stone-500 block">Idade:</span>
+                              <span className="font-bold text-stone-200 block">
+                                {selectedAdminUser.userProfile?.age || selectedAdminUser.userProfile?.operator_age || "N/D"} {selectedAdminUser.userProfile?.age || selectedAdminUser.userProfile?.operator_age ? "anos" : ""}
+                              </span>
+                            </div>
+                            <div className="space-y-1">
+                              <span className="text-[9px] uppercase font-mono text-stone-500 block">Data de Nascimento:</span>
+                              <span className="font-bold text-stone-200 block">{selectedAdminUser.userProfile?.birthdate || "N/D"}</span>
+                            </div>
+                            <div className="space-y-1">
+                              <span className="text-[9px] uppercase font-mono text-stone-500 block">Objetivo / Meta:</span>
+                              <span className="font-bold text-stone-200 block">{selectedAdminUser.userProfile?.goal || "N/D"}</span>
+                            </div>
+                            <div className="space-y-1">
+                              <span className="text-[9px] uppercase font-mono text-stone-500 block">Última Atualização:</span>
+                              <span className="font-mono text-stone-400 block">{selectedAdminUser.lastUpdated ? new Date(selectedAdminUser.lastUpdated).toLocaleString() : "Desconhecido"}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Chats Explorer Section */}
+                        <div className="bg-[#0c0c0e] border border-stone-850 rounded-2xl p-5 md:p-6 space-y-5">
+                          <div className="border-b border-stone-850 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="space-y-0.5">
+                              <h4 className="text-xs font-bold uppercase tracking-wider text-purple-400">Histórico de Conversas e Mensagens</h4>
+                              <p className="text-[10px] text-stone-500">Histórico completo de chats criados por este usuário.</p>
+                            </div>
+                          </div>
+
+                          {selectedAdminUser.conversations && selectedAdminUser.conversations.length > 0 ? (
+                            <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
+                              
+                              {/* Chats List sub-rail (4 cols) */}
+                              <div className="md:col-span-4 space-y-1.5 text-left">
+                                <span className="block text-[10px] uppercase font-mono tracking-wider text-stone-500 mb-1 font-bold">Listagem de Chats</span>
+                                <div className="space-y-1.5 max-h-[350px] overflow-y-auto pr-1">
+                                  {selectedAdminUser.conversations.map((chat: any) => {
+                                    const isSelectedChat = selectedAdminChat?.id === chat.id;
+                                    return (
+                                      <button
+                                        key={chat.id}
+                                        onClick={() => setSelectedAdminChat(chat)}
+                                        className={`w-full text-left p-2.5 rounded-xl border transition text-[11px] font-medium block truncate ${
+                                          isSelectedChat
+                                            ? "bg-purple-900/15 border-purple-500/40 text-purple-300"
+                                            : "bg-[#08080a] border-stone-850 hover:border-stone-750 text-stone-300"
+                                        }`}
+                                      >
+                                        <div className="font-bold truncate">{chat.title || "Chat sem título"}</div>
+                                        <div className="text-[9px] text-stone-500 font-mono mt-0.5">{chat.messages?.length || 0} mensagens</div>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+
+                              {/* Chat message viewer thread (8 cols) */}
+                              <div className="md:col-span-8 space-y-2 flex flex-col h-[350px] bg-[#070709] border border-stone-850 rounded-xl p-3 overflow-hidden text-left">
+                                {selectedAdminChat ? (
+                                  <>
+                                    <div className="border-b border-stone-850 pb-2 flex items-center justify-between shrink-0">
+                                      <span className="text-[10px] uppercase font-mono text-purple-400 font-black truncate max-w-[180px]">
+                                        {selectedAdminChat.title || "Chat Ativo"}
+                                      </span>
+                                      <span className="text-[9px] text-stone-500 font-mono">
+                                        ID: {selectedAdminChat.id.slice(0, 8)}
+                                      </span>
+                                    </div>
+
+                                    {/* Chat log messages viewer */}
+                                    <div className="flex-1 overflow-y-auto space-y-4 pr-1 font-sans text-xs text-left">
+                                      {selectedAdminChat.messages && selectedAdminChat.messages.length > 0 ? (
+                                        selectedAdminChat.messages.map((m: any, mIdx: number) => (
+                                          <div key={mIdx} className="space-y-1 leading-relaxed text-left">
+                                            <div className="flex items-center gap-2 justify-between">
+                                              <span className={`text-[9px] uppercase font-black tracking-wider ${
+                                                m.role === "user" ? "text-blue-400" : "text-emerald-400"
+                                              }`}>
+                                                {m.role === "user" ? "Usuário" : "Assistente Hackerfy"}
+                                              </span>
+                                              <span className="text-[8px] text-stone-600 font-mono">{m.timestamp}</span>
+                                            </div>
+                                            <div className="bg-[#101014] border border-stone-900 rounded-xl p-3 text-[11px] text-stone-300 break-words font-sans text-left">
+                                              {m.content}
+
+                                              {/* Rendering user attachments in Admin panel */}
+                                              {m.attachments && m.attachments.length > 0 && (
+                                                <div className="mt-2.5 grid grid-cols-1 gap-2 border-t border-stone-900/60 pt-2 text-left">
+                                                  {m.attachments.map((att: any, attIdx: number) => {
+                                                    const isImg = att.type.startsWith("image/");
+                                                    const isVid = att.type.startsWith("video/");
+
+                                                    return (
+                                                      <div key={attIdx} className="flex items-center gap-2 bg-black/40 border border-stone-850 p-2 rounded-lg text-[10px] text-left">
+                                                        {isImg ? (
+                                                          <img src={att.url} className="w-8 h-8 object-cover rounded border border-stone-800" alt="" />
+                                                        ) : (
+                                                          <div className="w-8 h-8 rounded bg-blue-500/10 text-blue-400 flex items-center justify-center">
+                                                            <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                                            </svg>
+                                                          </div>
+                                                        )}
+                                                        <div className="min-w-0 flex-1 text-left">
+                                                          <p className="font-bold truncate text-stone-300">{att.name}</p>
+                                                          <p className="text-[8px] text-stone-500 truncate">{att.type}</p>
+                                                        </div>
+                                                        <a 
+                                                          href={att.url} 
+                                                          download={att.name}
+                                                          target="_blank"
+                                                          rel="noreferrer"
+                                                          className="p-1.5 rounded hover:bg-stone-900 text-stone-400 hover:text-white transition"
+                                                        >
+                                                          Download
+                                                        </a>
+                                                      </div>
+                                                    );
+                                                  })}
+                                                </div>
+                                              )}
+                                            </div>
+                                          </div>
+                                        ))
+                                      ) : (
+                                        <div className="text-center py-10 text-[10px] text-stone-500 font-mono">
+                                          Nenhuma mensagem encontrada neste chat.
+                                        </div>
+                                      )}
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="m-auto text-center text-[10px] text-stone-500 font-mono py-10">
+                                    Selecione um chat da lista para carregar o histórico de mensagens.
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-center py-12 text-xs text-stone-500 font-mono bg-[#08080a] border border-stone-850 rounded-xl">
+                              Este usuário ainda não iniciou nenhuma conversa no cockpit.
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="m-auto text-center py-20 text-xs text-stone-500 font-mono bg-[#0c0c0e] border border-stone-850 rounded-2xl w-full">
+                        Selecione um usuário no menu à esquerda para carregar as informações detalhadas e logs.
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -4487,12 +4981,16 @@ Fui configurado com suas diretrizes de sandbox para te apoiar em estudos de cibe
               <div className="space-y-2 border-t border-stone-800/50 pt-3">
                 <span className="block text-[10px] uppercase font-mono tracking-wider text-stone-400 font-bold">Carregar do Dispositivo (Galeria)</span>
                 
-                <div className="relative group flex flex-col items-center justify-center border border-dashed border-stone-800 hover:border-emerald-500/40 bg-stone-950/40 rounded-2xl p-4 text-center cursor-pointer transition">
+                <div 
+                  onClick={() => wallpaperInputRef.current?.click()}
+                  className="relative group flex flex-col items-center justify-center border border-dashed border-stone-800 hover:border-emerald-500/40 bg-stone-950/40 rounded-2xl p-4 text-center cursor-pointer transition"
+                >
                   <input
                     type="file"
+                    ref={wallpaperInputRef}
                     accept="image/*,video/*"
                     onChange={handleFileUpload}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                    className="hidden"
                   />
                   <div className="p-2 bg-emerald-500/5 rounded-xl text-emerald-400 group-hover:scale-105 transition mb-2">
                     <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
