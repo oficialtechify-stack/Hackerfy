@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
+import { AuditSchema, AskSchema, RegisterSchema } from "./src/utils/validation.server";
 
 dotenv.config();
 
@@ -355,6 +356,119 @@ function isQuotaError(err: any): boolean {
 const app = express();
 app.use(express.json({ limit: "10mb" }));
 
+// In-Memory Rate Limiter cache & middleware to prevent brute force and DDoS attacks on API
+const rateLimitCache = new Map<string, { count: number; resetTime: number }>();
+
+function rateLimitMiddleware(windowMs: number, max: number, message: string) {
+  return (req: any, res: any, next: any) => {
+    const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
+    const path = req.path;
+    const key = `ratelimit:${ip}:${path}`;
+    const now = Date.now();
+
+    const record = rateLimitCache.get(key);
+    if (!record || now > record.resetTime) {
+      rateLimitCache.set(key, {
+        count: 1,
+        resetTime: now + windowMs
+      });
+      return next();
+    }
+
+    record.count++;
+    if (record.count > max) {
+      return res.status(429).json({
+        error: message || "Muitas requisições. Tente novamente mais tarde."
+      });
+    }
+
+    next();
+  };
+}
+
+// Global Security and CORS Hardening Middleware
+app.use((req, res, next) => {
+  const allowedOrigins = [
+    "https://hackerfy.vercel.app",
+    "http://localhost:3000",
+    "http://localhost:5173"
+  ];
+  const origin = req.headers.origin;
+  
+  if (origin) {
+    if (allowedOrigins.includes(origin) || origin.includes("run.app") || origin.includes("localhost")) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+    } else {
+      res.setHeader("Access-Control-Allow-Origin", "https://hackerfy.vercel.app");
+    }
+  } else {
+    res.setHeader("Access-Control-Allow-Origin", "https://hackerfy.vercel.app");
+  }
+
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  
+  const host = req.headers.host || "";
+  const isDevOrPreview = process.env.NODE_ENV !== "production" || 
+                         host.includes("run.app") || 
+                         host.includes("localhost") || 
+                         host.includes("127.0.0.1");
+
+  if (!isDevOrPreview) {
+    res.setHeader("X-Frame-Options", "SAMEORIGIN");
+    res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+    res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+  } else {
+    // Permissive settings for AI Studio dev preview iframe integration
+    res.setHeader("Cross-Origin-Opener-Policy", "unsafe-none");
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+  }
+
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), interest-cohort=(), payment=(), usb=(), bluetooth=(), midi=(), ambient-light-sensor=(), accelerometer=(), gyroscope=(), magnetometer=(), clipboard-read=(), display-capture=(), fullscreen=(self), picture-in-picture=(), sync-xhr=(), xr-spatial-tracking=()");
+  res.setHeader("X-DNS-Prefetch-Control", "off");
+
+  // Content-Security-Policy (CSP)
+  // Hardened for direct connections to our origin, Google/Firebase Auth and Firestore WebSocket endpoints
+  const csp = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-eval'", // unsafe-eval is needed for Vite's HMR in dev mode, we moved sw inline script to bundle to avoid unsafe-inline
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https://*",
+    "font-src 'self' data: https://fonts.gstatic.com",
+    "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com wss://*.firebaseio.com",
+    "form-action 'self'",
+    isDevOrPreview 
+      ? "frame-ancestors 'self' https://*.google.com https://ai.studio https://*.ai.studio https://aistudio.google.com https://*.googleusercontent.com" 
+      : "frame-ancestors 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "upgrade-insecure-requests"
+  ].join("; ");
+
+  res.setHeader("Content-Security-Policy", csp);
+
+  // CSRF Protection: check that non-GET/OPTIONS API requests have the custom security header
+  if ((req.method === "POST" || req.method === "PUT" || req.method === "DELETE") && req.path.startsWith("/api")) {
+    const requestedWith = req.headers["x-requested-with"];
+    if (!requestedWith) {
+      return res.status(403).json({
+        error: "Tentativa de CSRF detectada. Cabeçalho X-Requested-With ausente no request."
+      });
+    }
+  }
+
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+
+  next();
+});
+
+// Apply rate limiting specifically on API endpoints to safeguard against exploitation
+app.use("/api/", rateLimitMiddleware(60000, 30, "Muitas requisições. Tente novamente em 1 minuto."));
+
 async function startServer() {
   const PORT = 3000;
 
@@ -380,15 +494,43 @@ async function startServer() {
   });
 }
 
+// API Route: Secure auditor registration endpoint (educational protected example)
+  app.post("/api/register", async (req, res) => {
+    try {
+      // 1. Zod input validation
+      const parsed = RegisterSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ 
+          error: "Erro de validação de dados.", 
+          details: parsed.error.format() 
+        });
+        return;
+      }
+
+      const { name, email, password } = parsed.data;
+
+      // 2. Simulated secure auditor registration (representing secure backend production)
+      res.status(201).json({
+        success: true,
+        message: "Auditor registrado com sucesso no sistema Hackerfy AppSec Suite.",
+        user: { name, email, role: "auditor" }
+      });
+    } catch (error: any) {
+      console.error("Erro no registro:", error);
+      res.status(500).json({ error: "Erro interno do servidor." });
+    }
+  });
+
 // API Route: Security Code & Vulnerability audit endpoint
   app.post("/api/audit", async (req, res) => {
     let clientLanguage = "en";
     try {
-      const { code, filename, language, mode } = req.body;
-      if (!code || !code.trim()) {
-        res.status(400).json({ error: "Code content is empty" });
+      const parsed = AuditSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.issues[0].message });
         return;
       }
+      const { code, filename, language, mode } = parsed.data;
 
       clientLanguage = language || "en"; // "en" or "pt"
       
@@ -746,7 +888,12 @@ Your response MUST be strictly in valid JSON format, respecting exactly the same
   app.post("/api/ask", async (req, res) => {
     let clientLanguage = "en";
     try {
-      const { message, history, language, userProfile, creatorModel, personality, learnings } = req.body;
+      const parsed = AskSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.issues[0].message });
+        return;
+      }
+      const { message, history, language, userProfile, creatorModel, personality, learnings } = parsed.data;
       clientLanguage = language || "en";
       
       let systemInstruction = clientLanguage === "pt"
@@ -984,7 +1131,7 @@ Você deve chamar o usuário frequentemente de "${howToCall || name || "Operador
         });
         
         let deepseekResponse = "";
-        const runGeminiDirectly = creatorModel === "gemini";
+        const runGeminiDirectly = (creatorModel as string) === "gemini";
         
         if (runGeminiDirectly && ai) {
           console.log("[HackerAI] Direct Gemini code generation active...");

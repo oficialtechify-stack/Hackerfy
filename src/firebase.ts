@@ -23,6 +23,7 @@ import {
   deleteDoc, 
   updateDoc, 
   orderBy,
+  onSnapshot,
   enableMultiTabIndexedDbPersistence
 } from "firebase/firestore";
 
@@ -59,7 +60,8 @@ export {
   where,
   deleteDoc,
   updateDoc,
-  orderBy
+  orderBy,
+  onSnapshot
 };
 
 export type { User };
