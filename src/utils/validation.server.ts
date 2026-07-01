@@ -39,6 +39,16 @@ export const AskSchema = z.object({
       cnpj: z.string().max(30).optional(),
       birthdate: z.string().max(30).optional(),
     })
+    .nullable()
+    .optional(),
+  userLocation: z
+    .object({
+      latitude: z.number().optional(),
+      longitude: z.number().optional(),
+      accuracy: z.number().optional(),
+      timestamp: z.number().optional(),
+    })
+    .nullable()
     .optional(),
 });
 

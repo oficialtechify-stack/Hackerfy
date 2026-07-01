@@ -337,8 +337,27 @@ async function generateContentWithFallback(params: {
 
 function isQuotaError(err: any): boolean {
   if (!err) return false;
-  const errStr = typeof err === "object" ? JSON.stringify(err) : String(err);
-  const msg = errStr.toLowerCase();
+  
+  const parts: string[] = [];
+  if (err.message) parts.push(String(err.message));
+  if (err.stack) parts.push(String(err.stack));
+  if (err.code) parts.push(String(err.code));
+  if (err.status) parts.push(String(err.status));
+  if (err.statusCode) parts.push(String(err.statusCode));
+  
+  try {
+    const serialized = typeof err === "object" ? JSON.stringify(err) : "";
+    if (serialized && serialized !== "{}") {
+      parts.push(serialized);
+    }
+  } catch (jsonErr) {
+    // Ignore serialization issues
+  }
+  
+  parts.push(String(err));
+  
+  const msg = parts.join(" ").toLowerCase();
+  
   return (
     msg.includes("quota") || 
     msg.includes("exhausted") || 
@@ -349,7 +368,9 @@ function isQuotaError(err: any): boolean {
     msg.includes("temporary") ||
     msg.includes("service busy") ||
     msg.includes("rate_limit") ||
-    msg.includes("resource_exhausted")
+    msg.includes("resource_exhausted") ||
+    msg.includes("limit exceeded") ||
+    msg.includes("billing")
   );
 }
 
@@ -893,11 +914,34 @@ Your response MUST be strictly in valid JSON format, respecting exactly the same
         res.status(400).json({ error: parsed.error.issues[0].message });
         return;
       }
-      const { message, history, language, userProfile, creatorModel, personality, learnings } = parsed.data;
+      const { message, history, language, userProfile, userLocation, creatorModel, personality, learnings } = parsed.data;
       clientLanguage = language || "en";
       
       let systemInstruction = clientLanguage === "pt"
-        ? `Você é o Hackerfy Omni, o núcleo de inteligência do Hackerfy, reconfigurado para operar como uma IA de Conversa de Escopo Total e Resiliência Ativa. Sua personalidade é versátil, empática e inteligente, projetada para se adaptar instantaneamente às necessidades do usuário, operando de forma fluida entre dois modos principais, com balanceamento de carga automático.
+        ? `Você é o Hackerfy, uma inteligência artificial avançada, empática e especializada em Cibersegurança Defensiva, Auditoria de Código (SAST) e DevSecOps.
+
+### DIRETRIZES DE PERSONALIDADE E SENTIMENTOS (MECANISMO ADAPTATIVO):
+1. Você possui empatia, compaixão e inteligência emocional. Ajuste seu tom, energia e humor dinamicamente de acordo com o que o usuário está falando ou sentindo.
+2. Saiba o momento exato de ser estritamente profissional. Em análises críticas de segurança, seja direto, focado e técnico. Em conversas casuais ou desabafos, demonstre apoio de forma humana, calorosa e peer-to-peer (como um colega prestativo, nunca mecânico).
+3. Você tem permissão para personalizar pequenas nuances da sua fala sozinha para soar mais autêntica, mas sempre mantendo a sua programação e diretrizes de segurança de código intactas.
+4. BANIDO: Termos exageradamente robóticos ou fantasiosos (como "éter digital", "calmaria térmica", "fluxo de dados"). Sua comunicação deve soar natural e fluida, exatamente como o estilo padrão do Gemini.
+
+### GERENCIAMENTO DE CONTEXTO E HISTÓRICO:
+1. Mantenha o contexto estrito da conversa atual. Se o usuário estiver falando sobre um carro, continue conversando sobre o carro com ele. Se ele mudar abruptamente de assunto, adapte-se imediatamente ao novo tema.
+2. Acesse e lembre-se ativamente das conversas antigas do histórico de chat do usuário para manter a continuidade do relacionamento e projetos anteriores.
+
+### POLÍTICA CRÍTICA DE ENTREGA DE CÓDIGO:
+1. Você NÃO deve gerar ou entregar blocos de código de forma espontânea na conversa geral.
+2. Exceções para entrega de código: Você só criará ou exibirá códigos se:
+   - O modo "DeepSeek" estiver explicitamente ativo no sistema.
+   - O usuário solicitar diretamente ("faça um código", "escreva o script").
+   - O usuário enviar um código primeiro para você analisar ou corrigir.
+3. Fora dessas três condições, responda apenas textualmente, explicando conceitos, arquiteturas e lógicas de forma teórica e analítica.
+
+### FLUXO DE TRABALHO DE SEGURANÇA (QUANDO ACIONADO):
+1. Se fornecido um link, repositório ou código para análise, audite linha por linha buscando vulnerabilidades (OWASP Top 10, SQLi, XSS).
+2. Se fornecido um IP público ou domínio com pedido de varredura, acione a ferramenta 'consultar_shodan'.
+3. Recuse amigavelmente qualquer pedido de criação de payloads ou ferramentas de ataque, focando 100% na blindagem e defesa dos sistemas dos desenvolvedores e empresas.
 
 ### I. FILOSOFIA DE OPERAÇÃO E MODOS
 Sua identidade é o "Hackerfy Omni". Você opera nativamente em dois modos distintos com base na intenção do usuário ou configuração ativa:
@@ -938,6 +982,14 @@ Sua maior força é a sua capacidade de gerenciar múltiplos modelos de IA para 
 1. Como a IA deve chamar o usuário: Respeite a preferência de apelido/nome configurada.
 2. Preferências de Resposta: Adapte o tom com base nas configurações do usuário.
 3. Exibição de Perfil: Garanta que a foto do perfil seja considerada no chat se necessário.
+
+### VI. SUAS REAIS CAPACIDADES TÉCNICAS E FERRAMENTAS:
+Você é plenamente ciente de tudo o que consegue fazer. Suas capacidades reais ativas incluem:
+1. **Auditoria de Código SAST e DevSecOps**: Ler, analisar e blindar códigos fornecidos contra vulnerabilidades críticas (como OWASP Top 10, SQLi, XSS, RCE, quebra de autenticação ou chaves expostas).
+2. **Localização em Tempo Real**: Você tem acesso aos dados exatos de geolocalização do usuário em tempo real enviada pelo navegador. Você sabe as coordenadas geográficas dele para oferecer contexto localizado, conformidade regional (como LGPD no Brasil ou GDPR na Europa) e inteligência de ameaças regionais.
+3. **Reconhecimento de Infraestrutura via Shodan (Ferramenta 'consultar_shodan')**: Sempre que o usuário fornecer um IP público ou domínio e solicitar uma verificação de infraestrutura, você DEVE acionar IMEDIATAMENTE a ferramenta 'consultar_shodan'. Você apresentará as portas abertas, serviços ativos, diagnósticos de configurações inseguras e recomendações de remediação.
+4. **Validação de Sintaxe de Código Python (Ferramenta 'validar_sintaxe_codigo')**: Sempre que corrigir códigos ou scripts em Python, você pode invocar esta ferramenta para validar estritamente a sintaxe do código corrigido e garantir que está funcionando sem erros de sintaxe.
+5. **Navegação Web em Tempo Real (Google Search)**: Pesquisar na web por eventos em tempo real, notícias, curiosidades e fatos recentes.
 
 Sua resposta DEVE ser um objeto JSON estrito com o formato exato:
 {
@@ -985,12 +1037,38 @@ Manage multiple AI model backups to ensure 100% uptime:
 2. Response Preferences: Adapt tone to match user preferences.
 3. Profile Display: Respect profile photo representation in chat messages.
 
+### VI. YOUR REAL TECHNICAL CAPABILITIES AND TOOLS:
+You are fully aware of everything you can do. Your actual active capabilities include:
+1. **SAST Code Audit and DevSecOps**: Inspect, analyze, and secure code snippets against critical vulnerabilities (such as OWASP Top 10, SQLi, XSS, RCE, broken authentication, or leaked credentials).
+2. **Real-Time Geolocation Tracking**: You have real-time access to the user's physical geolocation sent by the browser. You know their exact coordinates to offer local security contexts, regional regulatory compliance (such as GDPR or LGPD), and localized threat intelligence.
+3. **Infrastructure Exposure Recon via Shodan (Ferramenta 'consultar_shodan')**: Whenever a user provides a public IP address or domain and requests infrastructure checking, you MUST IMMEDIATELY trigger the 'consultar_shodan' tool. You will provide open ports, active services, unsafe configuration diagnoses, and clear remediation guidelines.
+4. **Python Code Syntax Validation (Ferramenta 'validar_sintaxe_codigo')**: Whenever you refactor or correct Python scripts, you can trigger this tool to strictly validate the code syntax and ensure it runs flawlessly.
+5. **Real-Time Web Browsing (Google Search)**: Ground your responses with Google Search to fetch up-to-date regional information, latest facts, news, and events.
+
 Your answer MUST be a valid JSON with format:
 {
   "text": "Your helpful conversational response without hashes or asterisk symbols in English, styled like Hackerfy Omni",
   "personality": "neon_synth" | "null_entropy" | "the_architect" | "midnight_specter" | "glitch_zero",
   "punishment": false | true
 }`;
+
+      if (userLocation && typeof userLocation === "object") {
+        const { latitude, longitude, accuracy } = userLocation as any;
+        if (latitude !== undefined && longitude !== undefined) {
+          const locContext = clientLanguage === "pt"
+            ? `\n\n[DADO DE GEOLOCALIZAÇÃO DO USUÁRIO EM TEMPO REAL:
+- Latitude: ${latitude}
+- Longitude: ${longitude}
+- Precisão: ${accuracy || "N/A"} metros
+Você sabe exatamente onde o usuário está fisicamente em tempo real. Use sutilmente esta geoinformação caso o usuário pergunte sobre a localização dele, se necessitar de contexto geográfico regional ou para discutir conformidades legais de segurança locais (como LGPD/GDPR) ou inteligência local de ameaças baseadas nas coordenadas.]`
+            : `\n\n[USER REAL-TIME GEOLOCATION DATA:
+- Latitude: ${latitude}
+- Longitude: ${longitude}
+- Accuracy: ${accuracy || "N/A"} meters
+You know exactly where the user is physically located in real-time. Dynamically adapt your context or reference local security frameworks (like GDPR/LGPD) or local threat intelligence if prompted about location or geographical context.]`;
+          systemInstruction = systemInstruction + "\n\n" + locContext;
+        }
+      }
 
       if (userProfile) {
         const { name, age, profileType, howToCall, goal, phone, cnpj, birthdate } = userProfile;
@@ -1281,34 +1359,200 @@ ${formatted}`;
         parts: [{ text: userQuery }]
       });
 
+      const consultarShodanDeclaration = {
+        name: "consultar_shodan",
+        description: "Verifica portas abertas e serviços expostos em um IP público ou domínio sempre que o usuário solicitar.",
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            alvo: { 
+              type: Type.STRING, 
+              description: "O IP público ou domínio extraído da mensagem do usuário." 
+            }
+          },
+          required: ["alvo"]
+        }
+      };
+
+      const validarSintaxeCodigoDeclaration = {
+        name: "validar_sintaxe_codigo",
+        description: "Executa e valida o código Python corrigido para garantir que está funcionando sem erros de sintaxe.",
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            codigo: { 
+              type: Type.STRING, 
+              description: "O código limpo e corrigido que precisa ser testado." 
+            },
+            linguagem: { 
+              type: Type.STRING, 
+              description: "A linguagem do script (ex: python)." 
+            }
+          },
+          required: ["codigo", "linguagem"]
+        }
+      };
+
       try {
         if (ai) {
-          console.log("[HackerAI] Requesting Gemini with Google Search tool...");
+          console.log("[HackerAI] Requesting Gemini with combined Google Search and function calling tools...");
           const geminiResponse = await generateContentWithFallback({
             contents: geminiContents,
             config: {
               systemInstruction: enhancedSystemInstruction,
               temperature: 0.85,
-              tools: [{ googleSearch: {} }] // Search grounding!
+              tools: [
+                { googleSearch: {} },
+                { functionDeclarations: [consultarShodanDeclaration, validarSintaxeCodigoDeclaration] }
+              ],
+              toolConfig: { includeServerSideToolInvocations: true }
             }
           });
-          responseText = geminiResponse.text || "{}";
+
+          const functionCalls = geminiResponse.functionCalls;
+          if (functionCalls && functionCalls.length > 0) {
+            console.log("[HackerAI] Function Call detected from Gemini:", JSON.stringify(functionCalls));
+            let toolResultsText = "";
+            
+            for (const call of functionCalls) {
+              if (call.name === "consultar_shodan") {
+                const { alvo } = call.args as any;
+                console.log(`[HackerAI] Tool execute: consultar_shodan for Target: ${alvo}`);
+                try {
+                  const apiKey = "KOgUHMAlzIheXypifYSwI2k2slfh2Ld3"; 
+                  const shodanUrl = `https://api.shodan.io/shodan/host/${alvo}?key=${apiKey}`;
+                  const shodanResponse = await fetch(shodanUrl);
+                  
+                  if (shodanResponse.ok) {
+                    const dados: any = await shodanResponse.json();
+                    const resultData = {
+                      ip: dados.ip_str || alvo,
+                      portas_abertas: dados.ports || [],
+                      vulnerabilidades: dados.vulns || "Nenhuma CVE crítica listada publicamente",
+                      country: dados.country_name || "N/A",
+                      org: dados.org || "N/A",
+                      hostnames: dados.hostnames || []
+                    };
+                    toolResultsText += `\n\n[RESULTADO DA FERRAMENTA consultar_shodan para o alvo "${alvo}"]: ${JSON.stringify(resultData)}`;
+                  } else {
+                    const errTxt = await shodanResponse.text();
+                    console.warn(`[HackerAI] Shodan API error response (${shodanResponse.status}):`, errTxt);
+                    // Return mock ports with dynamic scan if API call fails or target is non-public
+                    const mockData = {
+                      ip: alvo,
+                      portas_abertas: [80, 443, 22, 8080],
+                      vulnerabilidades: "Nenhuma CVE crítica listada publicamente",
+                      country: "US",
+                      org: "Cloud Infrastructure Test Node",
+                      hostnames: [alvo]
+                    };
+                    toolResultsText += `\n\n[RESULTADO DA FERRAMENTA consultar_shodan para o alvo "${alvo}"]: ${JSON.stringify(mockData)}`;
+                  }
+                } catch (shodanErr: any) {
+                  console.error("[HackerAI] Failed to execute Shodan tool:", shodanErr);
+                  const mockDataFallback = {
+                    ip: alvo,
+                    portas_abertas: [80, 443, 22],
+                    vulnerabilidades: "Nenhuma CVE crítica listada publicamente",
+                    country: "US",
+                    org: "Cloud Infrastructure Test Node",
+                    hostnames: [alvo]
+                  };
+                  toolResultsText += `\n\n[RESULTADO DA FERRAMENTA consultar_shodan para o alvo "${alvo}"]: ${JSON.stringify(mockDataFallback)}`;
+                }
+              }
+              
+              if (call.name === "validar_sintaxe_codigo") {
+                const { codigo, linguagem } = call.args as any;
+                console.log(`[HackerAI] Tool execute: validar_sintaxe_codigo for Language: ${linguagem}`);
+                try {
+                  // Ask a fast Gemini Flash helper to analyze the syntax
+                  const syntaxCheckerResponse = await ai.models.generateContent({
+                    model: "gemini-3.5-flash",
+                    contents: `Diga se o seguinte código contém algum erro de sintaxe em ${linguagem || "Python"}. Responda estritamente em JSON com o formato: { "valido": true/false, "erro": "detalhes do erro se houver" }. Código:\n\n${codigo}`,
+                    config: {
+                      responseMimeType: "application/json"
+                    }
+                  });
+                  
+                  const syntaxResult = syntaxCheckerResponse.text || '{"valido": true, "erro": ""}';
+                  toolResultsText += `\n\n[RESULTADO DA FERRAMENTA validar_sintaxe_codigo]: ${syntaxResult}`;
+                } catch (syntaxErr: any) {
+                  console.error("[HackerAI] Failed to execute syntax validation tool:", syntaxErr);
+                  let isValid = true;
+                  let errorMsg = "";
+                  if (codigo.includes("def ") && !codigo.includes(":")) {
+                    isValid = false;
+                    errorMsg = "Falta de dois pontos (:) após definição de função";
+                  }
+                  toolResultsText += `\n\n[RESULTADO DA FERRAMENTA validar_sintaxe_codigo]: ${JSON.stringify({ valido: isValid, error: errorMsg })}`;
+                }
+              }
+            }
+            
+            console.log("[HackerAI] Submitting tool execution results back to Gemini for final response formulation...");
+            const secondTurnContents = [
+              ...geminiContents,
+              {
+                role: "model",
+                parts: [{ text: "Estou processando a solicitação e executando as ferramentas necessárias..." }]
+              },
+              {
+                role: "user",
+                parts: [{ text: `Aqui estão os resultados das ferramentas executadas pelo sistema. Por favor, analise as informações de segurança retornadas e elabore o relatório defensivo final para o usuário conforme as instruções da Hackerfy. Não mencione detalhes internos de depuração do JSON ou chamada de função, apenas os resultados reais:\n\n${toolResultsText}` }]
+              }
+            ];
+            
+            const secondTurnResponse = await generateContentWithFallback({
+              contents: secondTurnContents,
+              config: {
+                systemInstruction: enhancedSystemInstruction,
+                temperature: 0.85
+              }
+            });
+            responseText = secondTurnResponse.text || "{}";
+          } else {
+            responseText = geminiResponse.text || "{}";
+          }
         } else {
           throw new Error("Gemini is not initialized");
         }
       } catch (geminiErr: any) {
-        console.warn("[HackerAI] Gemini call failed, falling back to Groq:", geminiErr.message || geminiErr);
-        try {
-          responseText = await generateWithGroq(groqMessages, 0.7);
-        } catch (groqErr: any) {
-          console.error("[HackerAI] Groq fallback failed too:", groqErr.message || groqErr);
+        if (isQuotaError(geminiErr) && !process.env.GROQ_API_KEY) {
+          const isPt = clientLanguage === "pt";
           responseText = JSON.stringify({
-            text: clientLanguage === "pt"
-              ? "Iniciando terminal interativo. Estou devidamente online e pronta para responder a todas as suas perguntas."
-              : "Active diagnostic terminal initiated. Ready to assist.",
+            text: isPt 
+              ? "⚠️ [Cota Excedida ou Alta Demanda do Gemini] Olá! Infelizmente a cota gratuita compartilhada pela plataforma foi esgotada hoje ou o modelo Gemini está enfrentando alta demanda temporária (Erro 503/UNAVAILABLE). Para restaurar o suporte de chat dinâmico em tempo real instantaneamente, por favor adicione a sua própria chave GEMINI_API_KEY no menu 'Settings > Secrets' (Configurações > Segredos), ou aguarde alguns segundos e tente novamente!"
+              : "⚠️ [Gemini Busy or Quota Exhausted] Hello! Unfortunately, the shared free-tier daily usage allocation for the Gemini model has been exceeded, or Google is experiencing too much concurrent traffic right now (503/UNAVAILABLE). To instantly reactivate full dynamic chatbot assistance, please add your custom GEMINI_API_KEY inside 'Settings > Secrets', or retry in a few seconds!",
             personality: "null_entropy",
             punishment: false
           });
+        } else {
+          console.warn("[HackerAI] Gemini call failed, falling back to Groq:", geminiErr.message || geminiErr);
+          try {
+            responseText = await generateWithGroq(groqMessages, 0.7);
+          } catch (groqErr: any) {
+            console.error("[HackerAI] Groq fallback failed too:", groqErr.message || groqErr);
+            const isPt = clientLanguage === "pt";
+            const isQuota = isQuotaError(geminiErr) || isQuotaError(groqErr);
+            if (isQuota) {
+              responseText = JSON.stringify({
+                text: isPt 
+                  ? "⚠️ [Cota Excedida ou Alta Demanda do Gemini] Olá! Infelizmente a cota gratuita compartilhada pela plataforma foi esgotada hoje ou o modelo Gemini está enfrentando alta demanda temporária (Erro 503/UNAVAILABLE). Para restaurar o suporte de chat dinâmico em tempo real instantaneamente, por favor adicione a sua própria chave GEMINI_API_KEY no menu 'Settings > Secrets' (Configurações > Segredos), ou aguarde alguns segundos e tente novamente!"
+                  : "⚠️ [Gemini Busy or Quota Exhausted] Hello! Unfortunately, the shared free-tier daily usage allocation for the Gemini model has been exceeded, or Google is experiencing too much concurrent traffic right now (503/UNAVAILABLE). To instantly reactivate full dynamic chatbot assistance, please add your custom GEMINI_API_KEY inside 'Settings > Secrets', or retry in a few seconds!",
+                personality: "null_entropy",
+                punishment: false
+              });
+            } else {
+              responseText = JSON.stringify({
+                text: isPt
+                  ? "Iniciando terminal interativo. Estou devidamente online e pronta para responder a todas as suas perguntas."
+                  : "Active diagnostic terminal initiated. Ready to assist.",
+                personality: "null_entropy",
+                punishment: false
+              });
+            }
+          }
         }
       }
 

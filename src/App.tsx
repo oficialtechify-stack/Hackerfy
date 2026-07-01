@@ -598,6 +598,52 @@ export default function App() {
   const [legalDescription, setLegalDescription] = useState("");
   const [showCheckResponseModal, setShowCheckResponseModal] = useState(false);
   const [showOmniModal, setShowOmniModal] = useState(false);
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number; accuracy: number; timestamp: number } | null>(null);
+
+  // Request user location on component mount or auth load
+  useEffect(() => {
+    if (typeof window !== "undefined" && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const loc = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+            timestamp: position.timestamp
+          };
+          setUserLocation(loc);
+          console.log("[Geolocation] Real-time user location fetched successfully:", loc);
+        },
+        (error) => {
+          console.warn("[Geolocation] Could not fetch user location:", error.message);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+      );
+
+      // Keep location updated in real-time
+      const watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          const loc = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+            timestamp: position.timestamp
+          };
+          setUserLocation(loc);
+          console.log("[Geolocation] Real-time user location updated:", loc);
+        },
+        (error) => {
+          console.warn("[Geolocation] watchPosition update error:", error.message);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+      );
+
+      return () => {
+        navigator.geolocation.clearWatch(watchId);
+      };
+    }
+  }, []);
+
   const [showWallpaperModal, setShowWallpaperModal] = useState(false);
   const [wallpaperUrl, setWallpaperUrl] = useState<string>(() => {
     if (typeof window !== "undefined") {
@@ -1035,76 +1081,84 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setCurrentUser(user);
+        
+        // INSTANT CACHE LOAD: load local storage data instantly first so the app is instantly visible and interactive
         try {
-          const userDocRef = doc(db, "users", user.uid);
-          const docSnap = await getDoc(userDocRef);
-          if (docSnap.exists()) {
-            const data = docSnap.data();
-            if (data.userProfile) {
-              setUserProfile(data.userProfile);
-            }
-            if (data.isOnboarded !== undefined) {
-              setIsOnboarded(data.isOnboarded);
-            }
-            if (data.conversations && Array.isArray(data.conversations)) {
-              setConversations(data.conversations);
-              if (data.activeChatId) {
-                setActiveChatId(data.activeChatId);
-                const found = data.conversations.find((c: any) => c.id === data.activeChatId);
+          const savedProfile = localStorage.getItem("hackerfy_profile");
+          const savedOnboarded = localStorage.getItem("hackerfy_onboarded") === "true";
+          const savedConversations = localStorage.getItem("hackerfy_conversations");
+          const savedActiveId = localStorage.getItem("hackerfy_active_chat_id");
+          
+          if (savedProfile) {
+            try {
+              setUserProfile(JSON.parse(savedProfile));
+            } catch (e) {}
+          }
+          setIsOnboarded(savedOnboarded);
+          if (savedConversations) {
+            try {
+              const parsed = JSON.parse(savedConversations);
+              setConversations(parsed);
+              if (savedActiveId) {
+                setActiveChatId(savedActiveId);
+                const found = parsed.find((c: any) => c.id === savedActiveId);
                 if (found) {
                   setMessages(found.messages);
                 }
-              } else if (data.conversations.length > 0) {
-                setActiveChatId(data.conversations[0].id);
-                setMessages(data.conversations[0].messages);
               }
-            }
-          } else {
-            // Document does not exist. Save whatever local state we have
-            await setDoc(userDocRef, {
-              email: user.email,
-              userProfile,
-              isOnboarded,
-              conversations,
-              activeChatId,
-              createdAt: new Date().toISOString()
-            });
+            } catch (e) {}
           }
-        } catch (err: any) {
-          console.error("Erro ao sincronizar do Firestore, tentando cache local:", err);
-          // Graceful fallback to local storage if Firestore is offline or unreachable
+        } catch (localErr) {
+          console.error("Erro ao carregar cache local inicial:", localErr);
+        }
+
+        // Hide loader instantly so there is ZERO delay entering the site!
+        setAuthLoading(false);
+
+        // Fetch Firestore in the background (non-blocking async task)
+        (async () => {
           try {
-            const savedProfile = localStorage.getItem("hackerfy_profile");
-            const savedOnboarded = localStorage.getItem("hackerfy_onboarded") === "true";
-            const savedConversations = localStorage.getItem("hackerfy_conversations");
-            const savedActiveId = localStorage.getItem("hackerfy_active_chat_id");
-            
-            if (savedProfile) {
-              try {
-                setUserProfile(JSON.parse(savedProfile));
-              } catch (e) {}
-            }
-            setIsOnboarded(savedOnboarded);
-            if (savedConversations) {
-              try {
-                const parsed = JSON.parse(savedConversations);
-                setConversations(parsed);
-                if (savedActiveId) {
-                  setActiveChatId(savedActiveId);
-                  const found = parsed.find((c: any) => c.id === savedActiveId);
+            const userDocRef = doc(db, "users", user.uid);
+            const docSnap = await getDoc(userDocRef);
+            if (docSnap.exists()) {
+              const data = docSnap.data();
+              if (data.userProfile) {
+                setUserProfile(data.userProfile);
+              }
+              if (data.isOnboarded !== undefined) {
+                setIsOnboarded(data.isOnboarded);
+              }
+              if (data.conversations && Array.isArray(data.conversations)) {
+                setConversations(data.conversations);
+                if (data.activeChatId) {
+                  setActiveChatId(data.activeChatId);
+                  const found = data.conversations.find((c: any) => c.id === data.activeChatId);
                   if (found) {
                     setMessages(found.messages);
                   }
+                } else if (data.conversations.length > 0) {
+                  setActiveChatId(data.conversations[0].id);
+                  setMessages(data.conversations[0].messages);
                 }
-              } catch (e) {}
+              }
+            } else {
+              // Document does not exist. Save whatever local state we have
+              await setDoc(userDocRef, {
+                email: user.email,
+                userProfile,
+                isOnboarded,
+                conversations,
+                activeChatId,
+                createdAt: new Date().toISOString()
+              });
             }
-          } catch (localErr) {
-            console.error("Erro ao recuperar dados locais offline:", localErr);
+          } catch (err: any) {
+            console.error("Erro ao sincronizar do Firestore em background:", err);
+          } finally {
+            setIsInitialSyncing(false);
           }
-        } finally {
-          setIsInitialSyncing(false);
-          setAuthLoading(false);
-        }
+        })();
+
       } else {
         setCurrentUser(null);
         setIsInitialSyncing(true);
@@ -1490,6 +1544,7 @@ Fui configurado com suas diretrizes de sandbox para te apoiar em estudos de cibe
           history: messages.slice(-10),
           language: lang,
           userProfile: userProfile,
+          userLocation: userLocation,
           creatorModel: isAgentMode ? "deepseek" : "gemini",
           personality: currentPersonality,
           learnings: communityLearnings
@@ -1648,6 +1703,7 @@ Fui configurado com suas diretrizes de sandbox para te apoiar em estudos de cibe
           history: truncatedMessages.slice(-10),
           language: lang,
           userProfile: userProfile,
+          userLocation: userLocation,
           creatorModel: isAgentMode ? "deepseek" : "gemini",
           personality: currentPersonality,
           learnings: communityLearnings
